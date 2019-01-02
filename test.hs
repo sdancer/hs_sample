@@ -28,7 +28,9 @@ myAction2 :: Capstone.CsInsn -> IO ()
 myAction2 insn = do
     let m = mnemonic insn
     case m of
-      "add" -> print "got a jump!"
+      "jmp" -> print "got a jump!"
+      "call" -> print "got a call!"
+      "ret" -> print "got a ret!"
       _ -> do
         Prelude.putStrLn ("0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o)
         where --m = mnemonic insn
