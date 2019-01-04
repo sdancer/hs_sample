@@ -1,3 +1,7 @@
+{-
+Dear future me, hope u can understand what i did bellow.
+Life is hard, don't blame me.
+-}
 module Main
 where
 
@@ -88,25 +92,43 @@ do_lift_block state bl_addr [] _ = state { blocks = reversed } -- reverse procce
       Just list -> Just $ List.reverse list
     pinsns = bls ! bl_addr
     bls = blocks state
-do_lift_block state bl_addr (insn:xs) addr_stack = trace ("---> " ++ show insn) $ if List.notElem (address insn) addr_stack  then do
-  let new_as = bl_addr : addr_stack
+do_lift_block state bl_addr (insn:xs) addr_stack = if List.notElem (address insn) addr_stack then
+  do
+    let new_as = bl_addr : addr_stack
 
-  let (state1, pi1) = if contains_group X86GrpCall insn then check_grp_call state insn else (state, NormalInsn insn)
-  let new_state = add_block_content state bl_addr $ NormalInsn insn
-  do_lift_block new_state bl_addr xs new_as
+    let pi1 = if contains_group X86GrpCall insn then check_grp_call insn else NormalInsn insn
+    let pi2 = if contains_group X86GrpRet insn then JunkInsn "skip" else pi1
+    -- let (state3, pi3) = if contains_group X86GrpJump insn then check_grp_jump state pi2 addr_stack else (state1, pi1)
+
+    let new_state = add_block_content state bl_addr pi2
+    do_lift_block new_state bl_addr xs new_as
   else state
 
-check_grp_call :: State -> CsInsn -> (State, ProccessedInsn)
-check_grp_call state insn = case Capstone.detail insn of
-  Nothing -> (state, NormalInsn insn)
-  Just d -> case archInfo d of
-    Nothing -> (state, NormalInsn insn)
-    Just (X86 ari) -> do
-      let op0:_ = operands ari
-      case value op0 of
-        X86.Imm x -> if x == next_addr insn then (state, JunkInsn "skip") else (state, NormalInsn insn)
-        otherwise -> (state, NormalInsn insn)
+check_grp_call :: CsInsn -> ProccessedInsn
+check_grp_call insn = case get_first_opr insn of
+  Nothing -> NormalInsn insn
+  Just op0 -> case value op0 of
+      X86.Imm x -> if x == next_addr insn
+          then JunkInsn "skip"
+          else NormalInsn insn
+      otherwise -> NormalInsn insn
 
+-- check_grp_jump :: State -> CsInsn -> [Word64] -> (State, ProccessedInsn)
+-- check_grp_jump state insn _ = case insn of
+--   JunkInsn _ -> (state, insn)
+--   NormalInsn i -> if mnemonic insn == "jmp"
+--     then "haha"
+--     else (state, insn)
+
+-- return first operand in a instruction
+get_first_opr :: CsInsn -> Maybe CsX86Op
+get_first_opr insn = case Capstone.detail insn of
+  Nothing -> Nothing
+  Just d -> case archInfo d of
+    Nothing        -> Nothing
+    Just (X86 ari) -> case operands ari of
+      op0:_ -> Just op0
+      otherwise -> Nothing
 
 next_addr :: CsInsn -> Word64
 next_addr insn = (address insn) + insn_size
@@ -147,7 +169,7 @@ compile_block ((_, NormalInsn insn) : xs) = do
 
 -- Convert a instruction to string
 insn_to_str :: CsInsn -> [Char]
-insn_to_str insn = o -- "0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o
+insn_to_str insn = "0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o
     where m = mnemonic insn
           o = opStr insn
           a = (showHex $ address insn) ""
