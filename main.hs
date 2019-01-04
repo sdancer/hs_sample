@@ -73,17 +73,27 @@ lift_block state contents (start_addr, Nothing) = do
 disasm_block :: BS.ByteString -> Word64 -> IO (Either CsErr [CsInsn])
 disasm_block contents start_addr = disasmSimpleIO $ disasm bin start_addr
   where
-    bin = getBinPart contents sa 100
+    bin = getBinPart contents addr 100
+    addr = sa - ba
     sa = fromIntegral(start_addr)::Int
+    ba = 0x400000
 
 do_lift_block :: State -> Word64 -> [CsInsn] -> [Word64] -> State
-do_lift_block state _ [] _ = state
-do_lift_block state bl_addr (insn:xs) addr_stack = do
+do_lift_block state bl_addr [] _ = state { blocks = reversed }
+  where
+    reversed = insert bl_addr reversed_bl bls
+    reversed_bl = case pinsns of
+      Nothing -> Nothing
+      Just list -> Just $ List.reverse list
+    pinsns = bls ! bl_addr
+    bls = blocks state
+do_lift_block state bl_addr (insn:xs) addr_stack = if List.notElem (address insn) addr_stack  then do
   let new_as = bl_addr : addr_stack
   let insn_size = fromIntegral(length $ bytes insn)::Word64
   let next_addr = (address insn) + insn_size
   let new_state = add_block_content state bl_addr $ NormalInsn insn
   do_lift_block new_state bl_addr xs new_as
+  else state
 
 -- set_block_content :: State -> Int -> [CsInsn] -> State
 -- set_block_content state addr insn_list = do
@@ -102,9 +112,30 @@ add_block_content state addr insn = do
       let xxx = insert addr (Just ct) bls
       state { blocks = xxx }
 
+compile_blocks :: [(Word64, (Maybe ProccessedInsnList))] -> IO ()
+compile_blocks [] = return ()
+compile_blocks ((_, Nothing):xs) = compile_blocks xs
+compile_blocks ((_, Just ilist):xs) = do
+    compile_block ilist
+    compile_blocks xs
+
+compile_block :: ProccessedInsnList -> IO ()
+compile_block [] = return ()
+compile_block ((_, JunkInsn _) : xs) = compile_block xs
+compile_block ((_, NormalInsn insn) : xs) = do
+  putStrLn $ insn_to_str insn
+  compile_block xs
+
+insn_to_str :: CsInsn -> [Char]
+insn_to_str insn = "0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o
+    where m = mnemonic insn
+          o = opStr insn
+          a = (showHex $ address insn) ""
+
 main :: IO ()
 main = do
   contents <- BS.readFile "blackcipher.aes"
   let state = new_state
-  aaa <- lift_next_block state contents
-  print aaa
+  nstate <- lift_next_block state contents
+  compile_blocks $ toAscList $ blocks nstate
+  -- print nstate
