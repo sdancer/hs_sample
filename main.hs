@@ -32,9 +32,18 @@ data Registers = Registers {
 data ProccessedInsn = NormalInsn CsInsn | JunkInsn String deriving (Show)
 type ProccessedInsnList = [(Word64, ProccessedInsn)]
 
+data AbstractOp = AbstractOp {
+  optype :: [Char],
+  op1    :: X86OpType,
+  op2    :: X86OpType
+} deriving (Show)
+
+data StackValue = IntVal Int | StrVal [Char]  | AbsVal AbstractOp deriving (Show)
+
 data State = State {
   blocks :: Map Word64 (Maybe ProccessedInsnList),
-  regs   :: Registers
+  regs   :: Registers,
+  stack  :: Map Word32 StackValue
 } deriving (Show)
 
 getBinPart :: BS.ByteString -> Int -> Int -> [Word8]
@@ -53,7 +62,7 @@ disasm intel_asm_buf start_addr = Disassembler {
     }
 
 new_state :: State
-new_state = State {blocks=init_blocks,regs=Registers {eax=0, ebx=0, ecx=0, edx=0, esi=0, edi=0, ebp=0, esp=0}}
+new_state = State {blocks=init_blocks,regs=Registers {eax=0, ebx=0, ecx=0, edx=0, esi=0, edi=0, ebp=0, esp=0}, stack=fromList([])}
   where
     init_blocks = fromList [(0x1DBF71A, Nothing)]
 
@@ -98,11 +107,15 @@ do_lift_block state bl_addr (insn:xs) addr_stack = if List.notElem (address insn
 
     let pi1 = if contains_group X86GrpCall insn then check_grp_call insn else NormalInsn insn
     let pi2 = if contains_group X86GrpRet insn then JunkInsn "skip" else pi1
-    -- let (state3, pi3) = if contains_group X86GrpJump insn then check_grp_jump state pi2 addr_stack else (state1, pi1)
+    let (state3, pi3) = if contains_group X86GrpJump insn then check_grp_jump state pi2 block addr_stack else (state, pi1)
 
-    let new_state = add_block_content state bl_addr pi2
+    let new_state = add_block_content state3 bl_addr pi3
     do_lift_block new_state bl_addr xs new_as
   else state
+  where
+    block = case (blocks state) ! bl_addr of
+      Nothing -> []
+      Just l -> l
 
 check_grp_call :: CsInsn -> ProccessedInsn
 check_grp_call insn = case get_first_opr insn of
@@ -113,12 +126,18 @@ check_grp_call insn = case get_first_opr insn of
           else NormalInsn insn
       otherwise -> NormalInsn insn
 
--- check_grp_jump :: State -> CsInsn -> [Word64] -> (State, ProccessedInsn)
--- check_grp_jump state insn _ = case insn of
---   JunkInsn _ -> (state, insn)
---   NormalInsn i -> if mnemonic insn == "jmp"
---     then "haha"
---     else (state, insn)
+-- check a jump instruction for split block?
+check_grp_jump :: State -> ProccessedInsn -> ProccessedInsnList -> [Word64] -> (State, ProccessedInsn)
+check_grp_jump state (JunkInsn x) _ _ = (state, JunkInsn x)
+check_grp_jump state (NormalInsn insn) block addr_stack = if mnemonic insn == "jmp"
+    then case get_first_opr_value insn of
+      Just (X86.Imm x) -> if List.elem x addr_stack -- check if this is a loop
+        then case List.find (\(a, _) -> a == x) block of
+          Nothing -> (state, NormalInsn insn)
+          Just (a, _) -> (state { blocks = split_block a block $ blocks state}, NormalInsn insn)
+        else (state, JunkInsn "skip")
+      otherwise -> trace ((show $ address insn) ++ "jmp to unknown location") $ (state, NormalInsn insn)
+    else (state, NormalInsn insn)
 
 -- return first operand in a instruction
 get_first_opr :: CsInsn -> Maybe CsX86Op
@@ -127,8 +146,13 @@ get_first_opr insn = case Capstone.detail insn of
   Just d -> case archInfo d of
     Nothing        -> Nothing
     Just (X86 ari) -> case operands ari of
-      op0:_ -> Just op0
+      op0:_     -> Just op0
       otherwise -> Nothing
+
+get_first_opr_value :: CsInsn -> Maybe CsX86OpValue
+get_first_opr_value insn = case get_first_opr insn of
+  Nothing -> Nothing
+  Just op -> Just $ value op
 
 next_addr :: CsInsn -> Word64
 next_addr insn = (address insn) + insn_size
@@ -152,6 +176,9 @@ add_block_content state addr insn = do
       let ct = i : bl
       let xxx = insert addr (Just ct) bls
       state { blocks = xxx }
+
+split_block :: Word64 -> ProccessedInsnList -> Map Word64 (Maybe ProccessedInsnList) -> Map Word64 (Maybe ProccessedInsnList)
+split_block _ _ blocks = blocks -- fixme: do split
 
 compile_blocks :: [(Word64, (Maybe ProccessedInsnList))] -> IO ()
 compile_blocks [] = return ()
