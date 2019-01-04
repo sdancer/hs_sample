@@ -10,6 +10,7 @@ import           Data.Word
 import           Debug.Trace                (trace, traceShow)
 import           Hapstone.Capstone
 import           Hapstone.Internal.Capstone as Capstone
+import           Hapstone.Internal.X86      as X86
 import           Numeric                    (showHex)
 import           System.IO
 
@@ -79,27 +80,45 @@ disasm_block contents start_addr = disasmSimpleIO $ disasm bin start_addr
     ba = 0x400000
 
 do_lift_block :: State -> Word64 -> [CsInsn] -> [Word64] -> State
-do_lift_block state bl_addr [] _ = state { blocks = reversed }
+do_lift_block state bl_addr [] _ = state { blocks = reversed } -- reverse proccessed instruction list
   where
     reversed = insert bl_addr reversed_bl bls
     reversed_bl = case pinsns of
-      Nothing -> Nothing
+      Nothing   -> Nothing
       Just list -> Just $ List.reverse list
     pinsns = bls ! bl_addr
     bls = blocks state
-do_lift_block state bl_addr (insn:xs) addr_stack = if List.notElem (address insn) addr_stack  then do
+do_lift_block state bl_addr (insn:xs) addr_stack = trace ("---> " ++ show insn) $ if List.notElem (address insn) addr_stack  then do
   let new_as = bl_addr : addr_stack
-  let insn_size = fromIntegral(length $ bytes insn)::Word64
-  let next_addr = (address insn) + insn_size
+
+  let (state1, pi1) = if contains_group X86GrpCall insn then check_grp_call state insn else (state, NormalInsn insn)
   let new_state = add_block_content state bl_addr $ NormalInsn insn
   do_lift_block new_state bl_addr xs new_as
   else state
 
--- set_block_content :: State -> Int -> [CsInsn] -> State
--- set_block_content state addr insn_list = do
---   let ct = Just $ List.map NormalInsn insn_list
---   let bl = insert addr ct $ blocks state
---   state { blocks = bl}
+check_grp_call :: State -> CsInsn -> (State, ProccessedInsn)
+check_grp_call state insn = case Capstone.detail insn of
+  Nothing -> (state, NormalInsn insn)
+  Just d -> case archInfo d of
+    Nothing -> (state, NormalInsn insn)
+    Just (X86 ari) -> do
+      let op0:_ = operands ari
+      case value op0 of
+        X86.Imm x -> if x == next_addr insn then (state, JunkInsn "skip") else (state, NormalInsn insn)
+        otherwise -> (state, NormalInsn insn)
+
+
+next_addr :: CsInsn -> Word64
+next_addr insn = (address insn) + insn_size
+  where
+    insn_size = fromIntegral(length $ bytes insn)::Word64
+
+contains_group :: X86InsnGroup -> CsInsn -> Bool
+contains_group gr insn = case Capstone.detail insn of
+  Nothing -> False
+  Just d  -> do
+    let grw8 = fromIntegral(fromEnum gr) :: Word8
+    List.elem grw8 $ groups d
 
 add_block_content :: State -> Word64 -> ProccessedInsn -> State
 add_block_content state addr insn = do
@@ -126,8 +145,9 @@ compile_block ((_, NormalInsn insn) : xs) = do
   putStrLn $ insn_to_str insn
   compile_block xs
 
+-- Convert a instruction to string
 insn_to_str :: CsInsn -> [Char]
-insn_to_str insn = "0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o
+insn_to_str insn = o -- "0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o
     where m = mnemonic insn
           o = opStr insn
           a = (showHex $ address insn) ""
@@ -135,7 +155,6 @@ insn_to_str insn = "0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o
 main :: IO ()
 main = do
   contents <- BS.readFile "blackcipher.aes"
-  let state = new_state
-  nstate <- lift_next_block state contents
-  compile_blocks $ toAscList $ blocks nstate
+  state <- lift_next_block new_state contents
+  compile_blocks $ toAscList $ blocks state
   -- print nstate
