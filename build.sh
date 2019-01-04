@@ -1,2 +1,2 @@
 mkdir -p dist
-ghc -o dist/real_code -odir dist/ -hidir dist/ real_code.hs
+ghc -o dist/main -odir dist/ -hidir dist/ main.hs

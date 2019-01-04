@@ -57,9 +57,7 @@ is_unproccessed_block (_, Nothing) = True
 is_unproccessed_block (_, _)       = False
 
 lift_next_block :: State -> BS.ByteString -> IO State
-lift_next_block state contents = do
-  print $ assocs $ blocks state
-  case List.find is_unproccessed_block $ assocs $ blocks state of
+lift_next_block state contents = case List.find is_unproccessed_block $ assocs $ blocks state of
     Nothing    -> return state
     Just block -> lift_block state contents block
 
