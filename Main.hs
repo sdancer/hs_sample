@@ -6,6 +6,7 @@ module Main
 where
 
 import           Asm
+import           Util
 import           Data.Binary.Get
 import qualified Data.ByteString            as BS
 import           Data.Either
@@ -18,24 +19,6 @@ import           Hapstone.Internal.Capstone as Capstone
 import           Hapstone.Internal.X86      as X86
 import           Numeric                    (showHex)
 import           System.IO
-
-getBinPart :: BS.ByteString -> Int -> Int -> [Word8]
-getBinPart contents from cnt = BS.unpack $ BS.take cnt $ BS.drop from contents
-
-disasm :: [Word8] -> Word64 -> Disassembler ()
-disasm intel_asm_buf start_addr = Disassembler {
-    arch = Capstone.CsArchX86 -- ^ Options: CsArchArm, CsArchArm64, CsArchMips, CsArchX86, CsArchPpc, CsArchSparc, CsArchSysz, CsArchXcore
-    , modes = [Capstone.CsMode32] -- ^ Modes (some may be combined by adding to the list): CsModeLittleEndian, CsModeArm, CsMode16 (16-bit x86), CsMode32 (32-bit x86), CsMode64 (64-bit x86-64/amd64 or PPC), CsModeThumb, CsModeMclass, CsModeV8 (ARMv8 A32), CsModeMicro, CsModeMips3, CsModeMips32r6, CsModeMipsGp64, CsModeV9 (SparcV9 mode), CsModeBigEndian, CsModeMips32, CsModeMips64
-    , buffer = intel_asm_buf -- ^ buffer to disassemble, as [Word8]
-    , addr = start_addr -- ^ address of first byte in the buffer, as Word64
-    , num = 0 -- ^ number of instructions to disassemble (0 for maximum)
-    , Hapstone.Capstone.detail = True -- ^ include detailed information? True/False
-    , Hapstone.Capstone.skip = Just (defaultSkipdataStruct) -- ^ setup SKIPDATA options, as Maybe CsSkipdataStruct
-    , action = defaultAction
-    }
-
-new_state :: BS.ByteString -> State
-new_state contents = State {mem_data=contents, blocks=empty, blocks_queue=[0x1DBF71A],regs=Registers {eax=0, ebx=0, ecx=0, edx=0, esi=0, edi=0, ebp=0, esp=0}, stack=fromList([])}
 
 lift_next_block :: State -> IO State
 lift_next_block state = case blocks_queue state of
@@ -87,6 +70,7 @@ do_lift_block state bl_addr (insn:xs) addr_stack = if List.notElem (address insn
   where
     block = (blocks state) ! bl_addr
 
+-- remove junk call
 check_grp_call :: CsInsn -> ProccessedInsn
 check_grp_call insn = case get_first_opr insn of
   Nothing -> NormalInsn insn
@@ -123,30 +107,12 @@ check_grp_jump state (NormalInsn insn) cur_block addr_stack = if mnemonic insn =
               else (state { blocks_queue=jump_addr:(blocks_queue state)}, NormalInsn insn)
       otherwise -> (state, JunkInsn "break")
 
+-- for skipping junk instructions
 skip_junk :: (InsnAddr, ProccessedInsn) -> Bool
 skip_junk (_, NormalInsn _) = True
 skip_junk _                 = False
 
--- return first operand in a instruction
-get_first_opr :: CsInsn -> Maybe CsX86Op
-get_first_opr insn = case Capstone.detail insn of
-  Nothing -> Nothing
-  Just d -> case archInfo d of
-    Nothing        -> Nothing
-    Just (X86 ari) -> case operands ari of
-      op0:_     -> Just op0
-      otherwise -> Nothing
-
-get_first_opr_value :: CsInsn -> Maybe CsX86OpValue
-get_first_opr_value insn = case get_first_opr insn of
-  Nothing -> Nothing
-  Just op -> Just $ value op
-
-next_addr :: CsInsn -> InsnAddr
-next_addr insn = (address insn) + insn_size
-  where
-    insn_size = fromIntegral(length $ bytes insn)::InsnAddr
-
+-- check if an instruction has a group (call/ret/jump/...)
 contains_group :: X86InsnGroup -> CsInsn -> Bool
 contains_group gr insn = case Capstone.detail insn of
   Nothing -> False
@@ -154,6 +120,7 @@ contains_group gr insn = case Capstone.detail insn of
     let grw8 = fromIntegral(fromEnum gr) :: Word8
     List.elem grw8 $ groups d
 
+-- add an procces instruction to block
 add_block_content :: State -> InsnAddr -> ProccessedInsn -> State
 add_block_content state addr insn = do
   let i = (addr, insn)
@@ -174,11 +141,11 @@ split_block at block blocks = do
 
 compile_blocks :: [(Word64, AsmBlock)] -> IO ()
 compile_blocks [] = return ()
--- compile_blocks ((_, Nothing):xs) = compile_blocks xs
 compile_blocks ((_, ilist):xs) = do
     compile_block ilist
     compile_blocks xs
 
+-- for now, just print block's instructions
 compile_block :: AsmBlock -> IO ()
 compile_block [] = return ()
 compile_block ((_, JunkInsn _) : xs) = compile_block xs
