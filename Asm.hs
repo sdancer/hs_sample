@@ -18,7 +18,7 @@ data Registers = Registers {
   ebp :: Maybe AsmValue,
   esp :: Maybe AsmValue
 } deriving (Show)
-data ProccessedInsn = NormalInsn CsInsn | JunkInsn String deriving (Show)
+data ProccessedInsn = Insn CsInsn | Skip CsInsn | Break CsInsn deriving (Show)
 type InsnAddr = Word64
 type BlockAddr = Word64
 type AsmBlock = [(InsnAddr, ProccessedInsn)]
@@ -144,12 +144,12 @@ put_contents state (Mem mem) val = if is_valid_stack_ref state mem
 stack_offset :: State -> X86OpMemStruct -> Word64
 stack_offset state mem = mem_index + mem_disp
   where
-    mem_index = if index mem == X86RegEax then 0 else (get_int_value state $ index mem) * mem_scale
+    mem_index = if index mem == X86RegInvalid then 0 else (get_int_value state $ index mem) * mem_scale
     mem_scale = fromIntegral(scale mem)::Word64
     mem_disp = fromIntegral(disp' mem)::Word64
 
 is_valid_stack_ref :: State -> X86OpMemStruct -> Bool
-is_valid_stack_ref state mem = (segment mem == X86RegEax) && (base mem == X86RegEsp) && ((index mem == X86RegEax) || (has_int_value state $ index mem))
+is_valid_stack_ref state mem = (segment mem == X86RegInvalid) && (base mem == X86RegEsp) && ((index mem == X86RegInvalid) || (has_int_value state $ index mem))
 
 get_int_value :: State -> X86Reg -> Word64
 get_int_value state reg = case fetch_contents state $ Reg reg of

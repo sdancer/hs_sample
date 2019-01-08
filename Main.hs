@@ -57,12 +57,12 @@ do_lift_block state bl_addr (insn:xs) addr_stack = if List.notElem (address insn
   do
     let new_as = bl_addr : addr_stack
 
-    let pi1 = if contains_group X86GrpCall insn then check_grp_call insn else NormalInsn insn
-    let pi2 = if contains_group X86GrpRet insn then JunkInsn "skip" else pi1
+    let pi1 = if contains_group X86GrpCall insn then check_grp_call insn else Insn insn
+    let pi2 = if contains_group X86GrpRet insn then Skip insn else pi1
     let (state3, pi3) = if contains_group X86GrpJump insn then check_grp_jump state pi2 block addr_stack else (state, pi1)
     let new_state = add_block_content state3 bl_addr pi3
     case pi3 of
-      JunkInsn "skip" -> new_state
+      Break _ -> new_state
       otherwise -> do
         let new_state2 = vproc new_state insn
         do_lift_block new_state2 bl_addr xs new_as
@@ -73,27 +73,28 @@ do_lift_block state bl_addr (insn:xs) addr_stack = if List.notElem (address insn
 -- remove junk call
 check_grp_call :: CsInsn -> ProccessedInsn
 check_grp_call insn = case get_first_opr insn of
-  Nothing -> NormalInsn insn
+  Nothing -> Insn insn
   Just op0 -> case value op0 of
       X86.Imm x -> if x == next_addr insn
-          then JunkInsn "skip"
-          else NormalInsn insn
-      otherwise -> NormalInsn insn
+          then Skip insn
+          else Insn insn
+      otherwise -> Insn insn
 
 -- check a jump instruction for split block?
 check_grp_jump :: State -> ProccessedInsn -> AsmBlock -> [InsnAddr] -> (State, ProccessedInsn)
-check_grp_jump state (JunkInsn x) _ _ = (state, JunkInsn x)
-check_grp_jump state (NormalInsn insn) cur_block addr_stack = if mnemonic insn == "jmp"
+check_grp_jump state (Skip x) _ _ = (state, Skip x)
+check_grp_jump state (Break x) _ _ = (state, Break x)
+check_grp_jump state (Insn insn) cur_block addr_stack = if mnemonic insn == "jmp"
     then case get_first_opr_value insn of
       Just (X86.Imm x) -> if List.elem x addr_stack -- check if this is a loop
         then case List.findIndex (\(a, _) -> a == x) cur_block of
-          Nothing -> (state, NormalInsn insn)
-          Just at -> (state { blocks = split_block at cur_block $ blocks state}, NormalInsn insn)
-        else (state, JunkInsn "skip")
-      otherwise -> trace ((show $ address insn) ++ "jmp to unknown location") $ (state, NormalInsn insn)
+          Nothing -> (state, Insn insn)
+          Just at -> (state { blocks = split_block at cur_block $ blocks state}, Insn insn)
+        else (state, Skip insn)
+      otherwise -> trace ((show $ address insn) ++ "jmp to unknown location") $ (state, Insn insn)
     else case get_first_opr_value insn of
       Just (X86.Imm jump_addr) -> if (next_addr insn) == next_addr insn
-        then (state, JunkInsn "skip")
+        then (state, Skip insn)
         else trace "fork branch" $ do
           let right_addr = (next_addr insn)
           let lstate = lift_block state jump_addr addr_stack
@@ -101,15 +102,15 @@ check_grp_jump state (NormalInsn insn) cur_block addr_stack = if mnemonic insn =
           let (la, _):_ = List.filter skip_junk $ blocks state ! jump_addr
           let (ra, _):_ = List.filter skip_junk $ blocks state ! right_addr
           if la == ra
-            then (state, JunkInsn "skip")
+            then (state, Skip insn)
             else if List.elem jump_addr $ keys $ blocks state
-              then (state, NormalInsn insn)
-              else (state { blocks_queue=jump_addr:(blocks_queue state)}, NormalInsn insn)
-      otherwise -> (state, JunkInsn "break")
+              then (state, Insn insn)
+              else (state { blocks_queue=jump_addr:(blocks_queue state)}, Insn insn)
+      otherwise -> (state, Break insn)
 
 -- for skipping junk instructions
 skip_junk :: (InsnAddr, ProccessedInsn) -> Bool
-skip_junk (_, NormalInsn _) = True
+skip_junk (_, Insn _) = True
 skip_junk _                 = False
 
 -- check if an instruction has a group (call/ret/jump/...)
@@ -125,7 +126,7 @@ add_block_content :: State -> InsnAddr -> ProccessedInsn -> State
 add_block_content state addr insn = do
   let i = (addr, insn)
   let bls = blocks state
-  let bl = bls ! addr
+  let bl = findWithDefault [] addr bls
   let ct = i : bl
   let xxx = insert addr ct bls
   state { blocks = xxx }
@@ -148,8 +149,13 @@ compile_blocks ((_, ilist):xs) = do
 -- for now, just print block's instructions
 compile_block :: AsmBlock -> IO ()
 compile_block [] = return ()
-compile_block ((_, JunkInsn _) : xs) = compile_block xs
-compile_block ((_, NormalInsn insn) : xs) = do
+compile_block ((addr, Skip insn) : xs) = do
+  putStrLn $ ";skip\t -->\t" ++ insn_to_str insn
+  compile_block xs
+compile_block ((addr, Break insn) : xs) = do
+  putStrLn $ ";break\t -->\t" ++ insn_to_str insn
+  compile_block xs
+compile_block ((_, Insn insn) : xs) = do
   putStrLn $ insn_to_str insn
   compile_block xs
 
@@ -165,4 +171,5 @@ main = do
   contents <- BS.readFile "blackcipher.aes"
   state <- lift_next_block $ new_state contents
   compile_blocks $ toAscList $ blocks state
-  -- print nstate
+  print $ keys $ blocks state
+  print $ blocks_queue state
