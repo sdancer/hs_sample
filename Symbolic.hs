@@ -13,8 +13,8 @@ import           Numeric                    (showHex)
 import           Util
 
 -- Virtual proccess instruction
-vproc :: CsInsn -> State -> (ProccessedInsn, State)
-vproc insn state = if contains_group X86GrpCall insn
+vproc :: ProccessedInsn -> State -> (ProccessedInsn, State)
+vproc (Insn insn) state = if contains_group X86GrpCall insn
   then case get_first_opr_value insn of
     Imm addr  -> (Skip insn, push_to_stack (NumVal addr) state)
     otherwise -> error "call with nothing???"
@@ -62,7 +62,17 @@ vproc insn state = if contains_group X86GrpCall insn
       let (new_state, _) = put_contents op0 value1 state
       let (new_state2, _) = put_contents op0 value1 new_state
       (Skip insn, new_state2)
+    "add" -> (Skip insn, do_aritm (aritm_add, abstract_add) insn state)
+    "sub" -> (Skip insn, do_aritm (aritm_sub, abstract_sub) insn state)
+    "or" ->  (Skip insn, do_aritm (aritm_or, abstract_or) insn state)
+    "xor" -> (Skip insn, do_aritm (aritm_xor, abstract_xor) insn state)
+    "shl" -> (Skip insn, do_aritm (aritm_shl, abstract_shl) insn state)
+    "shr" -> (Skip insn, do_aritm (aritm_shr, abstract_shr) insn state)
+    "and" -> (Skip insn, do_aritm (aritm_and, abstract_and) insn state)
+    "neg" -> (Skip insn, do_aritm (aritm_neg, abstract_neg) insn state)
+    "not" -> (Skip insn, do_aritm (aritm_not, abstract_not) insn state)
     otherwise -> error ("unimplement insn at " ++ showHex (address insn) "")
+vproc x state = (x, state) -- do nothing with skip and break instruction
 
 push_to_stack :: AsmValue -> State -> State
 push_to_stack value state = case fetch_reg_contents X86RegEsp state of
@@ -91,8 +101,10 @@ do_pop dest state = case fetch_reg_contents X86RegEsp state of
 type RealOpHandler = (Word64 -> Word64 -> Word64)
 type AbstractOpHandler = (AsmValue -> AsmValue -> AsmValue)
 
-do_aritm :: (RealOpHandler, AbstractOpHandler) -> CsX86OpValue -> CsX86OpValue -> State -> State
-do_aritm (real_op_hdl, abs_op_hdl) op1 op2 state = do
+do_aritm :: (RealOpHandler, AbstractOpHandler) -> CsInsn -> State -> State
+do_aritm (real_op_hdl, abs_op_hdl) insn state = do
+  let op1 = get_first_opr_value insn
+  let op2 = get_second_opr_value insn
   let op1v = fetch_contents op1 state
   let op2v = fetch_contents op2 state
   case (op1v, op2v) of
@@ -106,35 +118,57 @@ do_aritm (real_op_hdl, abs_op_hdl) op1 op2 state = do
       let (new_state, _) = put_contents op1 val state
       new_state
 
+aritm_add :: Word64 -> Word64 -> Word64
 aritm_add a b = fromIntegral( a32 + b32 )::Word64
   where
     a32 = fromIntegral(a)::Word32
     b32 = fromIntegral(b)::Word32
+
+aritm_sub :: Word64 -> Word64 -> Word64
 aritm_sub a b = fromIntegral( a32 + b32 )::Word64
   where
     a32 = fromIntegral(a)::Word32
     b32 = fromIntegral(b)::Word32
 
+aritm_or :: Word64 -> Word64 -> Word64
 aritm_or a b = a .|. b
+
+aritm_xor :: Word64 -> Word64 -> Word64
 aritm_xor a b = xor a b
-aritm_shl a b = shift a b
-aritm_shr a b = shift a (-b)
+
+aritm_shl :: Word64 -> Word64 -> Word64
+aritm_shl a b = fromIntegral(shift a32 b32)::Word64
+  where
+    a32 = fromIntegral(a)::Int
+    b32 = fromIntegral(b)::Int
+
+aritm_shr :: Word64 -> Word64 -> Word64
+aritm_shr a b = fromIntegral(shift a32 (-b32))::Word64
+  where
+    a32 = fromIntegral(a)::Int
+    b32 = fromIntegral(b)::Int
+
+aritm_and :: Word64 -> Word64 -> Word64
 aritm_and a b = a .&. b
+
+aritm_neg :: Word64 -> Word64 -> Word64
 aritm_neg a _ = 0 - a
-aritm_not a _ = a == 0
+
+aritm_not :: Word64 -> Word64 -> Word64
+aritm_not a _ = if a == 0 then 1 else 0
 
 real_img :: AbstractOp -> Maybe (Word64, AsmValue)
 real_img a = case op1 a of
   NumVal x -> Just (x, op2 a)
   otherwise -> case op2 a of
-    NumVal x -> Just (x, op1 a)
+    NumVal x  -> Just (x, op1 a)
     otherwise -> Nothing
 
 -- try to make first value is an integer
 real_img_pair :: AsmValue -> AsmValue -> Maybe (Word64, AsmValue)
 real_img_pair (NumVal a) b = Just (a, b)
 real_img_pair a (NumVal b) = Just (b, a)
-real_img_pair _ _ = Nothing
+real_img_pair _ _          = Nothing
 
 -- check abstract expression can be simplity
 val_in_abstract_ops :: AsmValue -> [Char] -> AsmValue -> Bool
@@ -153,6 +187,30 @@ exclude_val_from_abstract (AbsVal a) b = if o1 == b
   where
     o1 = op1 a
     o2 = op2 a
+
+select_real :: AsmValue -> AsmValue -> Maybe Word64
+select_real (NumVal a) _ = Just a
+select_real _ (NumVal b) = Just b
+select_real _ _          = Nothing
+
+select_abs :: AsmValue -> AsmValue -> Maybe AbstractOp
+select_abs (AbsVal a) _ = Just a
+select_abs _ (AbsVal b) = Just b
+select_abs _ _          = Nothing
+
+real_part :: AbstractOp -> Maybe Word64
+real_part op = case op1 op of
+  NumVal x -> Just x
+  otherwise -> case op2 op of
+    NumVal x  -> Just x
+    otherwise -> Nothing
+
+abs_part :: AbstractOp -> Maybe AbstractOp
+abs_part op = case op1 op of
+  AbsVal x -> Just x
+  otherwise -> case op2 op of
+    AbsVal x  -> Just x
+    otherwise -> Nothing
 
 abstract_add :: AsmValue -> AsmValue -> AsmValue
 abstract_add a b = case real_img_pair a b of
@@ -183,7 +241,23 @@ abstract_or :: AsmValue -> AsmValue -> AsmValue
 abstract_or a b = AbsVal $ AbstractOp {optype="or", op1=a, op2=b}
 
 abstract_xor :: AsmValue -> AsmValue -> AsmValue
-abstract_xor a b = AbsVal $ AbstractOp {optype="xor", op1=a, op2=b}
+abstract_xor a b
+  | a == b = NumVal 0
+  | otherwise = if val_in_abstract_ops b "xor" a
+    then exclude_val_from_abstract b a -- simplify a xor (b xor c) = a xor c
+    else if val_in_abstract_ops a "xor" b
+      then exclude_val_from_abstract a b -- simplify a xor (b xor c) = a xor c
+      else case (select_real a b, select_abs a b) of
+        (Just real, Just abstract) -> if (optype abstract) == "xor"
+          then case (real_part abstract, abs_part abstract) of
+            (Just realp, Just absp) -> do
+              let val = 0xffffffff .&. (xor real realp)
+              if val == 0
+                then AbsVal absp
+                else AbsVal $ AbstractOp {optype="xor", op1=AbsVal absp, op2=NumVal val}
+            otherwise -> AbsVal $ AbstractOp {optype="xor", op1=a, op2=b}
+          else AbsVal $ AbstractOp {optype="xor", op1=a, op2=b}
+        otherwise -> AbsVal $ AbstractOp {optype="xor", op1=a, op2=b}
 
 abstract_shl :: AsmValue -> AsmValue -> AsmValue
 abstract_shl a b = AbsVal $ AbstractOp {optype="shl", op1=a, op2=b}

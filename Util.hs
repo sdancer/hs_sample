@@ -28,13 +28,13 @@ insn_opr i insn = case Capstone.detail insn of
   Nothing -> Nothing
   Just d -> case archInfo d of
     Nothing        -> Nothing
-    Just (X86 ari) -> if length (operands ari) >= i
+    Just (X86 ari) -> if length (operands ari) < i
       then Nothing
       else Just $ (operands ari) !! i
 
 get_first_opr_value :: CsInsn -> CsX86OpValue
 get_first_opr_value insn = case insn_opr 0 insn of
-  Nothing -> error "nothing in first operand"
+  Nothing -> error ("nothing in first operand " ++ show insn)
   Just op -> value op
 
 get_second_opr_value :: CsInsn -> CsX86OpValue

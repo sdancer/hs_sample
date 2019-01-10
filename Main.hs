@@ -77,7 +77,7 @@ proccess_insn state bl_addr insn addr_stack = if List.notElem (address insn) add
     case pi3 of
       Break _ -> return (new_state, Nothing, new_as)
       otherwise -> do
-        let (_, new_state2) = vproc insn new_state
+        let (_, new_state2) = vproc pi3 new_state
         return (new_state2, Just naddr, new_as)
   else return (state, Just $ next_addr insn, addr_stack)
   where
