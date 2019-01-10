@@ -2,8 +2,10 @@ module Util where
 
 import qualified Data.ByteString            as BS
 import           Data.Word
+import qualified Data.List                  as List
 import           Hapstone.Capstone
 import           Hapstone.Internal.Capstone as Capstone
+import           Hapstone.Internal.X86      as X86
 
 getBinPart :: BS.ByteString -> Int -> Int -> [Word8]
 getBinPart contents from cnt = BS.unpack $ BS.take cnt $ BS.drop from contents
@@ -19,3 +21,37 @@ disasm intel_asm_buf start_addr = Disassembler {
     , Hapstone.Capstone.skip = Just (defaultSkipdataStruct) -- ^ setup SKIPDATA options, as Maybe CsSkipdataStruct
     , action = defaultAction
     }
+
+-- return first operand in a instruction
+insn_opr :: Int -> CsInsn -> Maybe CsX86Op
+insn_opr i insn = case Capstone.detail insn of
+  Nothing -> Nothing
+  Just d -> case archInfo d of
+    Nothing        -> Nothing
+    Just (X86 ari) -> if length (operands ari) >= i
+      then Nothing
+      else Just $ (operands ari) !! i
+
+get_first_opr_value :: CsInsn -> CsX86OpValue
+get_first_opr_value insn = case insn_opr 0 insn of
+  Nothing -> error "nothing in first operand"
+  Just op -> value op
+
+get_second_opr_value :: CsInsn -> CsX86OpValue
+get_second_opr_value insn = case insn_opr 1 insn of
+  Nothing -> error "nothing in second operand"
+  Just op -> value op
+
+-- calc next instruction address
+next_addr :: CsInsn -> Word64
+next_addr insn = (address insn) + insn_size
+  where
+    insn_size = fromIntegral(length $ bytes insn)::Word64
+
+-- check if an instruction has a group (call/ret/jump/...)
+contains_group :: X86InsnGroup -> CsInsn -> Bool
+contains_group gr insn = case Capstone.detail insn of
+  Nothing -> False
+  Just d  -> do
+    let grw8 = fromIntegral(fromEnum gr) :: Word8
+    List.elem grw8 $ groups d

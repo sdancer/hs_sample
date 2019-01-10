@@ -1,5 +1,6 @@
 module Asm where
 
+import           Data.Bits
 import qualified Data.ByteString            as BS
 import qualified Data.List                  as List
 import           Data.Map.Strict
@@ -7,28 +8,31 @@ import           Data.Word
 import           Hapstone.Capstone
 import           Hapstone.Internal.Capstone as Capstone
 import           Hapstone.Internal.X86      as X86
+import           Numeric                    (showHex)
 
 data Registers = Registers {
-  eax :: AsmValue,
-  ebx :: AsmValue,
-  ecx :: AsmValue,
-  edx :: AsmValue,
-  esi :: AsmValue,
-  edi :: AsmValue,
-  ebp :: AsmValue,
-  esp :: AsmValue
+  eax    :: AsmValue,
+  ebx    :: AsmValue,
+  ecx    :: AsmValue,
+  edx    :: AsmValue,
+  esi    :: AsmValue,
+  edi    :: AsmValue,
+  ebp    :: AsmValue,
+  esp    :: AsmValue,
+  eflags :: Word32
 } deriving (Show)
-data ProccessedInsn = Insn CsInsn | Skip CsInsn | Break CsInsn deriving (Show)
+data ProccessedInsn = Insn CsInsn | Skip CsInsn | Break CsInsn | WallSE CsInsn deriving (Show)
 type InsnAddr = Word64
 type BlockAddr = Word64
 type AsmBlock = [(InsnAddr, ProccessedInsn)]
 type AsmBlocks = Map BlockAddr AsmBlock
+-- data AbstractOpVal = SubAbsVal AbstractOp | RealVal CsX86OpValue deriving (Show)
 data AbstractOp = AbstractOp {
   optype :: [Char],
-  op1    :: X86OpType,
-  op2    :: X86OpType
-} deriving (Show)
-data AsmValue = NumVal Word64 | StrVal [Char]  | AbsVal AbstractOp | InitRegVal X86Reg | InitStackVal Word64 deriving (Show)
+  op1    :: AsmValue,
+  op2    :: AsmValue
+} deriving (Show, Eq)
+data AsmValue = NumVal Word64 | StrVal [Char]  | AbsVal AbstractOp | Flags Word32 | InitRegVal X86Reg | InitStackVal Word64 deriving (Show, Eq)
 data State = State {
   mem_data     :: BS.ByteString,
   blocks_queue :: [BlockAddr],
@@ -46,76 +50,56 @@ new_state contents = State {mem_data=contents, blocks=empty, blocks_queue=[0x1DB
   esi=InitRegVal X86RegEsi,
   edi=InitRegVal X86RegEdi,
   ebp=InitRegVal X86RegEbp,
-  esp=NumVal initial_stack_pos}, stack=fromList([])}
+  esp=NumVal initial_stack_pos,
+  eflags=0}, stack=fromList([])}
 
 initial_stack_pos = 1024 * 1024 :: Word64
 
--- return first operand in a instruction
-get_first_opr :: CsInsn -> Maybe CsX86Op
-get_first_opr insn = case Capstone.detail insn of
-  Nothing -> Nothing
-  Just d -> case archInfo d of
-    Nothing        -> Nothing
-    Just (X86 ari) -> case operands ari of
-      op0:_     -> Just op0
-      otherwise -> Nothing
+fetch_reg_contents :: X86Reg -> State -> AsmValue
+fetch_reg_contents X86RegEax state = eax $ regs state
+fetch_reg_contents X86RegEbx state = ebx $ regs state
+fetch_reg_contents X86RegEcx state = ecx $ regs state
+fetch_reg_contents X86RegEdx state = edx $ regs state
+fetch_reg_contents X86RegEsi state = esi $ regs state
+fetch_reg_contents X86RegEdi state = edi $ regs state
+fetch_reg_contents X86RegEbp state = ebp $ regs state
+fetch_reg_contents X86RegEsp state = esp $ regs state
 
-get_first_opr_value :: CsInsn -> Maybe CsX86OpValue
-get_first_opr_value insn = case get_first_opr insn of
-  Nothing -> Nothing
-  Just op -> Just $ value op
-
--- calc next instruction address
-next_addr :: CsInsn -> InsnAddr
-next_addr insn = (address insn) + insn_size
-  where
-    insn_size = fromIntegral(length $ bytes insn)::InsnAddr
-
-fetch_reg_contents :: State -> X86Reg -> AsmValue
-fetch_reg_contents state X86RegEax = eax $ regs state
-fetch_reg_contents state X86RegEbx = ebx $ regs state
-fetch_reg_contents state X86RegEcx = ecx $ regs state
-fetch_reg_contents state X86RegEdx = edx $ regs state
-fetch_reg_contents state X86RegEsi = esi $ regs state
-fetch_reg_contents state X86RegEdi = edi $ regs state
-fetch_reg_contents state X86RegEbp = ebp $ regs state
-fetch_reg_contents state X86RegEsp = esp $ regs state
-
-set_reg_contents :: State -> X86Reg -> AsmValue -> State
-set_reg_contents state X86RegEax val = do
+set_reg_contents :: X86Reg -> AsmValue -> State -> State
+set_reg_contents X86RegEax val state = do
   let r = regs state
   state {regs = r { eax=val}}
-set_reg_contents state X86RegEbx val = do
+set_reg_contents X86RegEbx val state = do
   let r = regs state
   state {regs = r { ebx=val}}
-set_reg_contents state X86RegEcx val = do
+set_reg_contents X86RegEcx val state = do
   let r = regs state
   state {regs = r { ecx=val}}
-set_reg_contents state X86RegEdx val = do
+set_reg_contents X86RegEdx val state = do
   let r = regs state
   state {regs = r { edx=val}}
-set_reg_contents state X86RegEsi val = do
+set_reg_contents X86RegEsi val state = do
   let r = regs state
   state {regs = r { esi=val}}
-set_reg_contents state X86RegEdi val = do
+set_reg_contents X86RegEdi val state = do
   let r = regs state
   state {regs = r { edi=val}}
-set_reg_contents state X86RegEbp val = do
+set_reg_contents X86RegEbp val state = do
   let r = regs state
   state {regs = r { ebp=val}}
-set_reg_contents state X86RegEsp val = do
+set_reg_contents X86RegEsp val state = do
   let r = regs state
   state {regs = r { esp=val}}
 
-fetch_contents :: State -> CsX86OpValue -> AsmValue
-fetch_contents _ (Imm value)         = NumVal value
-fetch_contents state (Reg reg)           = fetch_reg_contents state reg
-fetch_contents state (Mem mem)       = if is_valid_stack_ref state mem
+fetch_contents :: CsX86OpValue -> State -> AsmValue
+fetch_contents (Imm value) _         = NumVal value
+fetch_contents (Reg reg) state       = fetch_reg_contents reg state
+fetch_contents (Mem mem) state       = if is_valid_stack_ref mem state
   then do
-    let offset = stack_offset state mem
+    let offset = stack_offset mem state
     let current_stack_pos = esp $ regs state
     let stack_map = stack state
-    case fetch_reg_contents state X86RegEsp of
+    case fetch_reg_contents X86RegEsp state of
       NumVal current_stack_pos -> if List.elem (current_stack_pos + offset) $ keys stack_map
         then stack_map ! (current_stack_pos + offset)
         else InitStackVal (current_stack_pos + offset - initial_stack_pos)
@@ -123,12 +107,12 @@ fetch_contents state (Mem mem)       = if is_valid_stack_ref state mem
   else error "bad mem type"
 
 -- return state and is_mem_write
-put_contents :: State -> CsX86OpValue -> AsmValue -> (State, Bool)
-put_contents state (Reg reg) val = (set_reg_contents state reg val, False)
-put_contents state (Mem mem) val = if is_valid_stack_ref state mem
+put_contents :: CsX86OpValue -> AsmValue -> State -> (State, Bool)
+put_contents (Reg reg) val state = (set_reg_contents reg val state, False)
+put_contents (Mem mem) val state = if is_valid_stack_ref mem state
   then do
-    let offset = stack_offset state mem
-    case fetch_reg_contents state X86RegEsp of
+    let offset = stack_offset mem state
+    case fetch_reg_contents X86RegEsp state of
       NumVal current_stack_pos -> do
         let stack_map = stack state
         let new_stack = insert (current_stack_pos + offset) val stack_map
@@ -136,26 +120,44 @@ put_contents state (Mem mem) val = if is_valid_stack_ref state mem
       otherwise -> error "Esp value invalid"
   else (state, True)
 
-stack_offset :: State -> X86OpMemStruct -> Word64
-stack_offset state mem = mem_index + mem_disp
+stack_offset :: X86OpMemStruct -> State -> Word64
+stack_offset mem state = mem_index + mem_disp
   where
-    mem_index = if index mem == X86RegInvalid then 0 else (get_int_value state $ index mem) * mem_scale
+    mem_index = if index mem == X86RegInvalid then 0 else (get_int_value (index mem) state) * mem_scale
     mem_scale = fromIntegral(scale mem)::Word64
     mem_disp = fromIntegral(disp' mem)::Word64
 
-is_valid_stack_ref :: State -> X86OpMemStruct -> Bool
-is_valid_stack_ref state mem = (segment mem == X86RegInvalid) && (base mem == X86RegEsp) && ((index mem == X86RegInvalid) || (has_int_value state $ index mem))
+is_valid_stack_ref :: X86OpMemStruct -> State -> Bool
+is_valid_stack_ref mem state = (segment mem == X86RegInvalid) && (base mem == X86RegEsp) && ((index mem == X86RegInvalid) || (has_int_value (index mem) state))
 
-get_int_value :: State -> X86Reg -> Word64
-get_int_value state reg = case fetch_contents state $ Reg reg of
+get_int_value :: X86Reg -> State -> Word64
+get_int_value reg state = case fetch_contents (Reg reg) state of
   NumVal val -> val
-  otherwise         -> error "No int value"
+  otherwise  -> error "No int value"
 
-has_int_value :: State -> X86Reg -> Bool
-has_int_value state reg = case fetch_contents state $ Reg reg of
-  NumVal _ -> True
-  otherwise       -> False
+has_int_value :: X86Reg -> State -> Bool
+has_int_value reg state = case fetch_contents (Reg reg) state of
+  NumVal _  -> True
+  otherwise -> False
 
--- Virtual proccess instruction
-vproc :: State -> CsInsn -> State
-vproc state insn = state
+queue_block :: BlockAddr -> State -> State
+queue_block bl_addr state = state { blocks_queue=bl_addr:(blocks_queue state)}
+
+-- add an procces instruction to block
+add_block_content :: InsnAddr -> ProccessedInsn -> State -> State
+add_block_content addr insn state = do
+  let i = (addr, insn)
+  let bls = blocks state
+  let bl = findWithDefault [] addr bls
+  let ct = i : bl
+  let xxx = insert addr ct bls
+  state { blocks = xxx }
+
+-- split current block at a position into multiple blocks
+split_block :: Int -> AsmBlock -> AsmBlocks -> (AsmBlocks, BlockAddr)
+split_block at block blocks = do
+  let (old_bl, new_bl) = List.splitAt at block
+  let ((oaddr, _):_) = old_bl
+  let ((naddr, _):_) = new_bl
+  let new_blocks = insert oaddr old_bl $ blocks
+  (new_blocks, naddr)
