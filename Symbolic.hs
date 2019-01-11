@@ -42,7 +42,7 @@ vproc (Insn insn) state = trace ("vproc " ++ insn_to_str insn) $ if contains_gro
       let s1 = do_pop (Reg X86RegEdi) state
       let s2 = do_pop (Reg X86RegEsi) s1
       let s3 = do_pop (Reg X86RegEbp) s2
-      let s4 = do_pop (Reg X86RegEsp) s3
+      let s4 = do_pop (Reg X86RegInvalid) s3
       let s5 = do_pop (Reg X86RegEdx) s4
       let s6 = do_pop (Reg X86RegEcx) s5
       let s7 = do_pop (Reg X86RegEbx) s6
@@ -63,16 +63,18 @@ vproc (Insn insn) state = trace ("vproc " ++ insn_to_str insn) $ if contains_gro
       let (new_state, _) = put_contents op0 value1 state
       let (new_state2, _) = put_contents op0 value1 new_state
       (Skip insn, new_state2)
-    "add" -> (Skip insn, do_aritm (aritm_add, abstract_add) insn state)
-    "sub" -> (Skip insn, do_aritm (aritm_sub, abstract_sub) insn state)
-    "or" ->  (Skip insn, do_aritm (aritm_or, abstract_or) insn state)
-    "xor" -> (Skip insn, do_aritm (aritm_xor, abstract_xor) insn state)
-    "shl" -> (Skip insn, do_aritm (aritm_shl, abstract_shl) insn state)
-    "shr" -> (Skip insn, do_aritm (aritm_shr, abstract_shr) insn state)
-    "and" -> (Skip insn, do_aritm (aritm_and, abstract_and) insn state)
-    "neg" -> (Skip insn, do_aritm (aritm_neg, abstract_neg) insn state)
-    "not" -> (Skip insn, do_aritm (aritm_not, abstract_not) insn state)
-    otherwise -> error ("unimplement insn at " ++ showHex (address insn) "")
+    "inc" -> (Skip insn, do_aritm (aritm_add, abstract_add) (get_first_opr_value insn) (Imm 1) state)
+    "dec" -> (Skip insn, do_aritm (aritm_sub, abstract_sub) (get_first_opr_value insn) (Imm 1) state)
+    "add" -> (Skip insn, do_aritm (aritm_add, abstract_add) (get_first_opr_value insn) (get_second_opr_value insn) state)
+    "sub" -> (Skip insn, do_aritm (aritm_sub, abstract_sub) (get_first_opr_value insn) (get_second_opr_value insn) state)
+    "or" ->  (Skip insn, do_aritm (aritm_or, abstract_or) (get_first_opr_value insn) (get_second_opr_value insn) state)
+    "xor" -> (Skip insn, do_aritm (aritm_xor, abstract_xor) (get_first_opr_value insn) (get_second_opr_value insn) state)
+    "shl" -> (Skip insn, do_aritm (aritm_shl, abstract_shl) (get_first_opr_value insn) (get_second_opr_value insn) state)
+    "shr" -> (Skip insn, do_aritm (aritm_shr, abstract_shr) (get_first_opr_value insn) (get_second_opr_value insn) state)
+    "and" -> (Skip insn, do_aritm (aritm_and, abstract_and) (get_first_opr_value insn) (get_second_opr_value insn) state)
+    "neg" -> (Skip insn, do_aritm (aritm_neg, abstract_neg) (get_first_opr_value insn) (Imm 0) state) -- second oprand should be nothing
+    "not" -> (Skip insn, do_aritm (aritm_not, abstract_not) (get_first_opr_value insn) (Imm 0) state) -- second oprand should be nothing
+    otherwise -> trace ("## WARN: unimplement insn at " ++ showHex (address insn) "") $ (Skip insn, state)
 vproc x state = (x, state) -- do nothing with skip and break instruction
 
 push_to_stack :: AsmValue -> State -> State
@@ -80,37 +82,39 @@ push_to_stack value state = case fetch_reg_contents X86RegEsp state of
   NumVal esp_val -> do
     let stoff = esp_val - 4
     let s = set_reg_contents X86RegEsp (NumVal stoff) state
-    let nstack = insert stoff value $ stack state
-    s {stack = nstack}
+    let nstack = trace ("# push " ++ show value ++ " to " ++ show stoff ++ " in " ++ show(keys $ stack $ s)) $ insert stoff value $ stack s
+    let new_state2 = s {stack = nstack}
+    trace ("# after push " ++ show(keys $ stack $ new_state2)) $ new_state2
   otherwise -> error "bad esp"
 
 pop_from_stack :: Word64 -> State -> (AsmValue, State)
 pop_from_stack pos state = do
-    let value = (stack state) ! pos
+    let value = trace ("# pop from " ++ show pos ++ " in " ++ show(keys $ stack $ state)) $ (stack state) ! pos
     let new_stack_pos = NumVal (pos + 4)
     let new_state = set_reg_contents X86RegEsp new_stack_pos state
+    -- let nstack = delete pos $ stack new_state
     (value, new_state)
 
 do_pop :: CsX86OpValue -> State -> State
-do_pop (Reg X86RegEsp) state = case fetch_reg_contents X86RegEsp state of
+do_pop (Reg X86RegInvalid) state = case fetch_reg_contents X86RegEsp state of
     NumVal cur_stack_pos -> do
-      let (value, new_state) = pop_from_stack cur_stack_pos state
+      let (value, new_state) = trace ("# pop to invalid reg, popal ??") $ pop_from_stack cur_stack_pos state
       new_state
     otherwise -> error "bad esp"
 do_pop dest state = case fetch_reg_contents X86RegEsp state of
     NumVal cur_stack_pos -> do
       let (value, new_state) = pop_from_stack cur_stack_pos state
       let (new_state2, _) = put_contents dest value new_state
-      new_state2
+      trace ("# --> pop to " ++ show dest ++ " ..... new ESP=" ++ show(fetch_reg_contents X86RegEsp new_state2) ++ " value = " ++ show value) $ new_state2
     otherwise -> error "bad esp"
 
 type RealOpHandler = (Word64 -> Word64 -> Word64)
 type AbstractOpHandler = (AsmValue -> AsmValue -> AsmValue)
 
-do_aritm :: (RealOpHandler, AbstractOpHandler) -> CsInsn -> State -> State
-do_aritm (real_op_hdl, abs_op_hdl) insn state = do
-  let op1 = get_first_opr_value insn
-  let op2 = get_second_opr_value insn
+do_aritm :: (RealOpHandler, AbstractOpHandler) -> CsX86OpValue -> CsX86OpValue -> State -> State
+do_aritm (real_op_hdl, abs_op_hdl) op1 op2 state = do
+  -- let op1 = get_first_opr_value insn
+  -- let op2 = get_second_opr_value insn
   let op1v = fetch_contents op1 state
   let op2v = fetch_contents op2 state
   case (op1v, op2v) of
@@ -161,7 +165,9 @@ aritm_neg :: Word64 -> Word64 -> Word64
 aritm_neg a _ = 0 - a
 
 aritm_not :: Word64 -> Word64 -> Word64
-aritm_not a _ = if a == 0 then 1 else 0
+aritm_not a _ = fromIntegral(complement a32)::Word64
+  where
+    a32 = fromIntegral(a)::Word32
 
 real_img :: AbstractOp -> Maybe (Word64, AsmValue)
 real_img a = case op1 a of

@@ -31,7 +31,7 @@ lift_next_block state = case blocks_queue state of
     contents = mem_data state
 
 start_lift_block :: State -> BlockAddr -> [InsnAddr] -> Int -> IO State
-start_lift_block state bl_addr addr_stack cnt = trace (">>> start lift " ++ showHex bl_addr " " ++ show(keys $ blocks state)) $ if is_proccessed_block bl_addr state -- no infinity loop
+start_lift_block state bl_addr addr_stack cnt = trace (">>> start lift block 0x" ++ showHex bl_addr " " ++ show(keys $ blocks state)) $ if is_proccessed_block bl_addr state -- no infinity loop
   then trace ("--| already proccessed block 0x" ++ showHex bl_addr "") $ return state
   else lift_block state bl_addr bl_addr addr_stack 0 cnt
 
@@ -66,7 +66,7 @@ disasm_block contents start_addr = disasmSimpleIO $ disasm bin start_addr
     ba = 0x400000
 
 proccess_insn :: State -> BlockAddr -> CsInsn -> [InsnAddr] -> IO (State, Maybe InsnAddr, [InsnAddr])
-proccess_insn state bl_addr insn addr_stack = if List.notElem (address insn) addr_stack then
+proccess_insn state bl_addr insn addr_stack = trace ("--- ESP = " ++ show(fetch_reg_contents X86RegEsp state)) $ if List.notElem (address insn) addr_stack then
   do
     let new_as = (address insn) : addr_stack
 
@@ -78,6 +78,7 @@ proccess_insn state bl_addr insn addr_stack = if List.notElem (address insn) add
       Break _ -> return (new_state, Nothing, new_as)
       otherwise -> do
         let (_, new_state2) = vproc pi3 new_state
+        -- let (_, new_state2) = trace ("#| proc 0x" ++ showHex bl_addr " -> 0x" ++ showHex (address insn) "") $ vproc pi3 new_state
         return (new_state2, Just naddr, new_as)
   else return (state, Just $ next_addr insn, addr_stack)
   where
@@ -114,14 +115,14 @@ check_grp_jump state (Insn insn) cur_block addr_stack = if mnemonic insn == "jmp
         else trace ((insn_to_str insn) ++ "# fork branch 0x" ++ (showHex jump_addr "")) $ do
           let right_addr = (next_addr insn)
           lstate <- trace ("- lift subblock 0x" ++ showHex jump_addr " " ++ (show $ length addr_stack)) $ start_lift_block state jump_addr addr_stack 10
-          rstate <- trace ("- lift subblock 2 0x" ++ showHex right_addr "" ++ (show $ keys $ blocks lstate)) $ start_lift_block lstate right_addr addr_stack 10
-          let (la, _):_ = List.filter skip_junk $ blocks rstate ! jump_addr
+          rstate <- trace ("- lift subblock 2 0x" ++ showHex right_addr "" ++ (show $ keys $ blocks state)) $ start_lift_block state right_addr addr_stack 10
+          let (la, _):_ = List.filter skip_junk $ blocks lstate ! jump_addr
           let (ra, _):_ = List.filter skip_junk $ blocks rstate ! right_addr
           if la == ra
-            then return (rstate, Skip insn, next_addr insn)
-            else if (List.elem jump_addr $ keys $ blocks rstate) || (List.elem jump_addr $ blocks_queue rstate)
-              then return (rstate, Insn insn, next_addr insn) -- ??? fix infinity loop, right?
-              else return (queue_block jump_addr rstate, Insn insn, next_addr insn)
+            then return (state, Skip insn, next_addr insn)
+            else if (List.elem jump_addr $ keys $ blocks state) || (List.elem jump_addr $ blocks_queue rstate)
+              then return (state, Insn insn, next_addr insn) -- ??? fix infinity loop, right?
+              else return (queue_block jump_addr state, Insn insn, next_addr insn)
       otherwise -> return (state, Break insn, next_addr insn)
 
 -- for skipping junk instructions
