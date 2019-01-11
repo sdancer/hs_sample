@@ -6,6 +6,7 @@ import qualified Data.ByteString            as BS
 import qualified Data.List                  as List
 import           Data.Map.Strict
 import           Data.Word
+import           Debug.Trace
 import           Hapstone.Capstone
 import           Hapstone.Internal.Capstone as Capstone
 import           Hapstone.Internal.X86      as X86
@@ -14,7 +15,7 @@ import           Util
 
 -- Virtual proccess instruction
 vproc :: ProccessedInsn -> State -> (ProccessedInsn, State)
-vproc (Insn insn) state = if contains_group X86GrpCall insn
+vproc (Insn insn) state = trace ("vproc " ++ insn_to_str insn) $ if contains_group X86GrpCall insn
   then case get_first_opr_value insn of
     Imm addr  -> (Skip insn, push_to_stack (NumVal addr) state)
     otherwise -> error "call with nothing???"
@@ -29,23 +30,23 @@ vproc (Insn insn) state = if contains_group X86GrpCall insn
     "pop" -> (Skip insn, do_pop (get_first_opr_value insn) state)
     "pushal" -> do
       let s1 = push_to_stack (fetch_reg_contents X86RegEax state) state
-      let s2 = push_to_stack (fetch_reg_contents X86RegEbx s2) s2
-      let s3 = push_to_stack (fetch_reg_contents X86RegEcx s3) s3
-      let s4 = push_to_stack (fetch_reg_contents X86RegEdx s4) s4
-      let s5 = push_to_stack (fetch_reg_contents X86RegEsp s5) s5
-      let s6 = push_to_stack (fetch_reg_contents X86RegEbp s6) s6
+      let s2 = push_to_stack (fetch_reg_contents X86RegEbx s1) s1
+      let s3 = push_to_stack (fetch_reg_contents X86RegEcx s2) s2
+      let s4 = push_to_stack (fetch_reg_contents X86RegEdx s3) s3
+      let s5 = push_to_stack (NumVal 0) s4
+      let s6 = push_to_stack (fetch_reg_contents X86RegEbp s5) s5
       let s7 = push_to_stack (fetch_reg_contents X86RegEsi s6) s6
       let s8 = push_to_stack (fetch_reg_contents X86RegEdi s7) s7
       (Skip insn, s8)
     "popal" -> do
       let s1 = do_pop (Reg X86RegEdi) state
-      let s2 = do_pop (Reg X86RegEsi) state
-      let s3 = do_pop (Reg X86RegEbp) state
-      let s4 = do_pop (Reg X86RegEsp) state
-      let s5 = do_pop (Reg X86RegEdx) state
-      let s6 = do_pop (Reg X86RegEcx) state
-      let s7 = do_pop (Reg X86RegEbx) state
-      let s8 = do_pop (Reg X86RegEax) state
+      let s2 = do_pop (Reg X86RegEsi) s1
+      let s3 = do_pop (Reg X86RegEbp) s2
+      let s4 = do_pop (Reg X86RegEsp) s3
+      let s5 = do_pop (Reg X86RegEdx) s4
+      let s6 = do_pop (Reg X86RegEcx) s5
+      let s7 = do_pop (Reg X86RegEbx) s6
+      let s8 = traceShow(stack s7) $ do_pop (Reg X86RegEax) s7
       (Skip insn, s8)
     "mov" -> do
       let src = get_second_opr_value insn
@@ -79,18 +80,23 @@ push_to_stack value state = case fetch_reg_contents X86RegEsp state of
   NumVal esp_val -> do
     let stoff = esp_val - 4
     let s = set_reg_contents X86RegEsp (NumVal stoff) state
-    let nstack = insert stoff value $ stack state
+    let nstack = trace ("# push " ++ show value ++ " at " ++ show stoff ++ " to " ++ show(keys(stack state))) $ insert stoff value $ stack state
     s {stack = nstack}
   otherwise -> error "bad esp"
 
 pop_from_stack :: Word64 -> State -> (AsmValue, State)
 pop_from_stack pos state = do
-    let value = (stack state) ! pos
+    let value = trace ("# pop at " ++ show pos ++ " in " ++ show(keys(stack state))) $ (stack state) ! pos
     let new_stack_pos = NumVal (pos - 4)
     let new_state = set_reg_contents X86RegEsp new_stack_pos state
     (value, new_state)
 
 do_pop :: CsX86OpValue -> State -> State
+do_pop (Reg X86RegEsp) state = case fetch_reg_contents X86RegEsp state of
+    NumVal cur_stack_pos -> do
+      let (value, new_state) = pop_from_stack cur_stack_pos state
+      new_state
+    otherwise -> error "bad esp"
 do_pop dest state = case fetch_reg_contents X86RegEsp state of
     NumVal cur_stack_pos -> do
       let (value, new_state) = pop_from_stack cur_stack_pos state

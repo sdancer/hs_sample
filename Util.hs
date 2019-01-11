@@ -1,11 +1,12 @@
 module Util where
 
 import qualified Data.ByteString            as BS
-import           Data.Word
 import qualified Data.List                  as List
+import           Data.Word
 import           Hapstone.Capstone
 import           Hapstone.Internal.Capstone as Capstone
 import           Hapstone.Internal.X86      as X86
+import           Numeric                    (showHex)
 
 getBinPart :: BS.ByteString -> Int -> Int -> [Word8]
 getBinPart contents from cnt = BS.unpack $ BS.take cnt $ BS.drop from contents
@@ -21,6 +22,13 @@ disasm intel_asm_buf start_addr = Disassembler {
     , Hapstone.Capstone.skip = Just (defaultSkipdataStruct) -- ^ setup SKIPDATA options, as Maybe CsSkipdataStruct
     , action = defaultAction
     }
+
+-- Convert a instruction to string
+insn_to_str :: CsInsn -> [Char]
+insn_to_str insn = "0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o
+    where m = mnemonic insn
+          o = opStr insn
+          a = (showHex $ address insn) ""
 
 -- return first operand in a instruction
 insn_opr :: Int -> CsInsn -> Maybe CsX86Op

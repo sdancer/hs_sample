@@ -99,7 +99,7 @@ check_grp_jump state (Skip x) _ _ = return (state, Skip x, next_addr x)
 check_grp_jump state (Break x) _ _ = return (state, Break x, next_addr x)
 check_grp_jump state (Insn insn) cur_block addr_stack = if mnemonic insn == "jmp"
     then case get_first_opr_value insn of
-      X86.Imm x -> trace ((showHex (block_address cur_block) "") ++ " ** " ++ (insn_to_str insn)) $ if List.elem x addr_stack -- check if this is a loop
+      X86.Imm x -> trace ("# skip " ++ (insn_to_str insn)) $ if List.elem x addr_stack -- check if this is a loop
         then case List.findIndex (\(a, _) -> a == x) cur_block of
           Nothing -> return (state, Insn insn, next_addr insn)
           Just at -> do
@@ -111,7 +111,7 @@ check_grp_jump state (Insn insn) cur_block addr_stack = if mnemonic insn == "jmp
     else case get_first_opr_value insn of -- other jump
       X86.Imm jump_addr -> if jump_addr == next_addr insn
         then return (state, Skip insn, next_addr insn)
-        else trace ((insn_to_str insn) ++ ";fork branch 0x" ++ (showHex jump_addr "")) $ do
+        else trace ((insn_to_str insn) ++ "# fork branch 0x" ++ (showHex jump_addr "")) $ do
           let right_addr = (next_addr insn)
           lstate <- trace ("- lift subblock 0x" ++ showHex jump_addr " " ++ (show $ length addr_stack)) $ start_lift_block state jump_addr addr_stack 10
           rstate <- trace ("- lift subblock 2 0x" ++ showHex right_addr "" ++ (show $ keys $ blocks lstate)) $ start_lift_block lstate right_addr addr_stack 10
@@ -151,13 +151,6 @@ compile_block ((addr, Break insn) : xs) = do
 compile_block ((_, Insn insn) : xs) = do
   putStrLn $ insn_to_str insn
   compile_block xs
-
--- Convert a instruction to string
-insn_to_str :: CsInsn -> [Char]
-insn_to_str insn = "0x" ++ a ++ ":\t" ++ m ++ "\t" ++ o
-    where m = mnemonic insn
-          o = opStr insn
-          a = (showHex $ address insn) ""
 
 main :: IO ()
 main = do
