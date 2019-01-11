@@ -46,7 +46,7 @@ vproc (Insn insn) state = trace ("vproc " ++ insn_to_str insn) $ if contains_gro
       let s5 = do_pop (Reg X86RegEdx) s4
       let s6 = do_pop (Reg X86RegEcx) s5
       let s7 = do_pop (Reg X86RegEbx) s6
-      let s8 = traceShow(stack s7) $ do_pop (Reg X86RegEax) s7
+      let s8 = do_pop (Reg X86RegEax) s7
       (Skip insn, s8)
     "mov" -> do
       let src = get_second_opr_value insn
@@ -80,14 +80,14 @@ push_to_stack value state = case fetch_reg_contents X86RegEsp state of
   NumVal esp_val -> do
     let stoff = esp_val - 4
     let s = set_reg_contents X86RegEsp (NumVal stoff) state
-    let nstack = trace ("# push " ++ show value ++ " at " ++ show stoff ++ " to " ++ show(keys(stack state))) $ insert stoff value $ stack state
+    let nstack = insert stoff value $ stack state
     s {stack = nstack}
   otherwise -> error "bad esp"
 
 pop_from_stack :: Word64 -> State -> (AsmValue, State)
 pop_from_stack pos state = do
-    let value = trace ("# pop at " ++ show pos ++ " in " ++ show(keys(stack state))) $ (stack state) ! pos
-    let new_stack_pos = NumVal (pos - 4)
+    let value = (stack state) ! pos
+    let new_stack_pos = NumVal (pos + 4)
     let new_state = set_reg_contents X86RegEsp new_stack_pos state
     (value, new_state)
 
