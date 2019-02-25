@@ -3,10 +3,19 @@ module Ast where
 import Data.Word
 import           Hapstone.Internal.X86      as X86
 
-data Register = Name String | X86Reg X86.X86Reg
+--for now hapstone definition
+data Register = X86Reg X86.X86Reg -- Name String
               deriving (Eq, Show)
-data Flags = Zero | Overflow
+
+data Flags = Zero
+            | Overflow
+            | Carry
+            | Parity
+            | Adjust
+            | Sign
+            | Direction
               deriving (Eq, Show)
+
 data AstNodeType = BvaddNode AstNodeType AstNodeType
              | BvandNode  AstNodeType AstNodeType
              | BvashrNode  AstNodeType AstNodeType
