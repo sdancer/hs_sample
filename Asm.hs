@@ -42,16 +42,21 @@ data State = State {
 } deriving (Show)
 
 new_state :: BS.ByteString -> State
-new_state contents = State {mem_data=contents, blocks=empty, blocks_queue=[0x1DBF71A],regs=Registers {
-  eax=InitRegVal X86RegEax,
-  ebx=InitRegVal X86RegEbx,
-  ecx=InitRegVal X86RegEcx,
-  edx=InitRegVal X86RegEdx,
-  esi=InitRegVal X86RegEsi,
-  edi=InitRegVal X86RegEdi,
-  ebp=InitRegVal X86RegEbp,
-  esp=NumVal initial_stack_pos,
-  eflags=0}, stack=fromList([])}
+new_state contents = State {
+    mem_data=contents, 
+    blocks=empty,
+    blocks_queue=[0x1DBF71A],
+    regs=Registers {
+      eax=InitRegVal X86RegEax,
+      ebx=InitRegVal X86RegEbx,
+      ecx=InitRegVal X86RegEcx,
+      edx=InitRegVal X86RegEdx,
+      esi=InitRegVal X86RegEsi,
+      edi=InitRegVal X86RegEdi,
+      ebp=InitRegVal X86RegEbp,
+      esp=NumVal initial_stack_pos,
+      eflags=0},
+    stack=fromList([])}
 
 initial_stack_pos = 1024 * 1024 :: Word64
 

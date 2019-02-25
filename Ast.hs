@@ -71,6 +71,8 @@ data AstNodeType = BvaddNode AstNodeType AstNodeType
              | GetReg Register
              | SetFlag Flags AstNodeType
              | GetFlag Flags
+
+             | AssertNode String -- errormsg
              deriving (Eq, Show)
 
 

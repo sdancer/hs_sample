@@ -3,14 +3,54 @@ module X86Sem where
 import Ast
 import AstContext (getOperandAst)
 
+import           Hapstone.Capstone
+import           Hapstone.Internal.Capstone as Capstone
+import           Hapstone.Internal.X86      as X86
+import           Util
+
 --ll, ml, hl
 
-add_s :: instr -> [AstNodeType]
+add_s :: CsInsn -> [AstNodeType]
 add_s inst =
-  let op1 = getOperandAst(inst dst)
-      op2 = getOperandAst(inst src)
-  in [BvaddNode op1 op2]
+  let op1 = getOperandAst $ get_first_opr_value inst
+      op2 = getOperandAst $ get_second_opr_value inst
+  in [
+      BvaddNode op1 op2,
+      SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
+      SetFlag Parity (AssertNode "Parity flag unimplemented"),
+      SetFlag Sign (AssertNode "Sign flag unimplemented"),
+      SetFlag Zero (AssertNode "Zero flag unimplemented"),
+      SetFlag Carry (AssertNode "Carry flag unimplemented"),
+      SetFlag Overflow (AssertNode "Overflow flag unimplemented")
+    ]
 
+sub_s :: CsInsn -> [AstNodeType]
+sub_s inst =
+  let op1 = getOperandAst $ get_first_opr_value inst
+      op2 = getOperandAst $ get_second_opr_value inst
+  in [
+      BvsubNode op1 op2,
+      SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
+      SetFlag Parity (AssertNode "Parity flag unimplemented"),
+      SetFlag Sign (AssertNode "Sign flag unimplemented"),
+      SetFlag Zero (AssertNode "Zero flag unimplemented"),
+      SetFlag Carry (AssertNode "Carry flag unimplemented"),
+      SetFlag Overflow (AssertNode "Overflow flag unimplemented")
+    ]
+
+xor_s :: CsInsn -> [AstNodeType]
+xor_s inst =
+  let op1 = getOperandAst $ get_first_opr_value inst
+      op2 = getOperandAst $ get_second_opr_value inst
+  in [
+      BvxorNode op1 op2,
+      SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
+      SetFlag Parity (AssertNode "Parity flag unimplemented"),
+      SetFlag Sign (AssertNode "Sign flag unimplemented"),
+      SetFlag Zero (AssertNode "Zero flag unimplemented"),
+      SetFlag Carry (AssertNode "Carry flag unimplemented"),
+      SetFlag Overflow (AssertNode "Overflow flag unimplemented")
+    ]
 --
 -- void x86Semantics::add_s(triton::arch::Instruction& inst) {
 --   auto& dst = inst.operands[0];
