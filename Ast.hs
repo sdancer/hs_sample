@@ -1,5 +1,12 @@
 module Ast where
 
+import Data.Word
+import           Hapstone.Internal.X86      as X86
+
+data Register = Name String | X86Reg X86.X86Reg
+              deriving (Eq, Show)
+data Flags = Zero | Overflow
+              deriving (Eq, Show)
 data AstNodeType = BvaddNode AstNodeType AstNodeType
              | BvandNode  AstNodeType AstNodeType
              | BvashrNode  AstNodeType AstNodeType
@@ -29,7 +36,7 @@ data AstNodeType = BvaddNode AstNodeType AstNodeType
              | BvuremNode AstNodeType AstNodeType
              | BvxnorNode AstNodeType AstNodeType
              | BvxorNode AstNodeType AstNodeType
-             | BvNode Int Int
+             | BvNode Word64 Int
              | CompoundNode -- ! `[<expr1> <expr2> <expr3> ...]` node
              | ConcatNode [AstNodeType]
              | DecimalNode Int --float?
@@ -48,9 +55,14 @@ data AstNodeType = BvaddNode AstNodeType AstNodeType
              | SxNode Int AstNodeType
              | VariableNode
              | ZxNode Int AstNodeType
+             -- nodes fow low level
              | Store AstNodeType AstNodeType
              | Read AstNodeType
-             deriving (Eq, Ord, Show)
+             | SetReg Register AstNodeType
+             | GetReg Register
+             | SetFlag Flags AstNodeType
+             | GetFlag Flags
+             deriving (Eq, Show)
 
 
     -- //! `(let ((<alias> <expr2>)) <expr3>)`
