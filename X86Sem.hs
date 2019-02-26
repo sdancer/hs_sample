@@ -7,6 +7,7 @@ import           Hapstone.Capstone
 import           Hapstone.Internal.Capstone as Capstone
 import           Hapstone.Internal.X86      as X86
 import           Util
+import           AstContext
 
 --ll, ml, hl
 
@@ -51,32 +52,30 @@ xor_s inst =
       SetFlag Carry (AssertNode "Carry flag unimplemented"),
       SetFlag Overflow (AssertNode "Overflow flag unimplemented")
     ]
---
--- void x86Semantics::add_s(triton::arch::Instruction& inst) {
---   auto& dst = inst.operands[0];
---   auto& src = inst.operands[1];
---
---   /* Create symbolic operands */
---   auto op1 = this->symbolicEngine->getOperandAst(inst, dst);
---   auto op2 = this->symbolicEngine->getOperandAst(inst, src);
---
---   /* Create the semantics */
---   auto node = this->astCtxt.bvadd(op1, op2);
---
---   /* Create symbolic expression */
---   auto expr = this->symbolicEngine->createSymbolicExpression(inst, node, dst, "ADD operation");
---
---   /* Spread taint */
---   expr->isTainted = this->taintEngine->taintUnion(dst, src);
---
---   /* Update symbolic flags */
---   this->af_s(inst, expr, dst, op1, op2);
---   this->cfAdd_s(inst, expr, dst, op1, op2);
---   this->ofAdd_s(inst, expr, dst, op1, op2);
---   this->pf_s(inst, expr, dst);
---   this->sf_s(inst, expr, dst);
---   this->zf_s(inst, expr, dst);
---
---   /* Update the symbolic control flow */
---   this->controlFlow_s(inst);
--- }
+
+push ::  CsInsn -> [AstNodeType]
+push inst =
+  let op1 = getOperandAst $ get_first_opr_value inst
+  in [
+      SetReg stack_register (BvsubNode (GetReg stack_register) (BvNode 4 32)),
+      Store (GetReg stack_register) op1
+    ]
+
+pop ::  CsInsn -> [AstNodeType]
+pop inst =
+  --whenever the operation is a store reg or store mem depends on op1
+  let
+    read_exp = Read (BvaddNode (GetReg stack_register) (BvNode 4 32))
+    pop_op = case (get_first_opr_value inst) of
+              (Reg reg) -> (SetReg stack_register read_exp)
+              (Mem mem) -> Store (getLeaAst mem) read_exp
+              (Imm _) -> AssertNode "pop with imm, wtf"
+  in
+   [
+      SetReg stack_register (BvaddNode (GetReg stack_register) (BvNode 4 32)),
+      pop_op
+    ]
+
+--isolate x86 32 bit specific stuff so its easier to refactor later
+stack_register :: Register
+stack_register = (X86Reg X86RegEsp)
