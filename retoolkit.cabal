@@ -9,8 +9,13 @@
  build-type:          Simple
  cabal-version:       >=1.10
 
- executable haq
+ executable rekit
+   hs-source-dirs: src
    main-is:           Main.hs
+   other-modules:
+              Asm
+              , Symbolic
+              , Util
    build-depends:     base >=4.5 && <9.8
                       , containers
                       , bytestring
