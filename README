@@ -1,3 +1,13 @@
-re toolkit
-writen in haskell
+another reverse engineering toolkit, writen in haskell
 not much to say yet
+
+goals:
+- quereable
+- equation system
+- symbolic execution
+- compile IR back to native code
+- transformations (instrumentation)
+- decompiler backend
+
+non-goals:
+... think some

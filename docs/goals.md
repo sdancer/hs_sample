@@ -8,10 +8,3 @@ goals:
 
 non-goals:
 ... think some
-
-
-
-
-
-quereable:
-- ex: does any expression access a certain relative memory address
