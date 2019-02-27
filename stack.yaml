@@ -1,0 +1,7 @@
+flags: {}
+packages:
+- .
+extra-deps:
+- git: https://github.com/ibabushkin/hapstone.git
+  commit: 4ac11f0a1e23e5a0f23351149c70bd541ddf5344
+resolver: lts-13.9

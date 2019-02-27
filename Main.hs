@@ -104,9 +104,9 @@ check_grp_jump state (Insn insn) cur_block addr_stack = if mnemonic insn == "jmp
         then case List.findIndex (\(a, _) -> a == x) cur_block of
           Nothing -> return (state, Insn insn, next_addr insn)
           Just at -> do
-          let (trim, next_bl_addr) = split_block at cur_block $ blocks state
-          let new_state = state { blocks = trim }
-          return (queue_block next_bl_addr state, Insn insn, next_addr insn)
+            let (trim, next_bl_addr) = split_block at cur_block $ blocks state
+            let new_state = state { blocks = trim }
+            return (queue_block next_bl_addr state, Insn insn, next_addr insn)
         else return (state, Skip insn, x)
       otherwise -> return (state, Insn insn, next_addr insn)
     else case get_first_opr_value insn of -- other jump
