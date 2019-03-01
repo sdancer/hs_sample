@@ -8,6 +8,7 @@ import            Hapstone.Internal.X86      as X86
 import            Util
 import            Data.Word
 
+--x86 vs arm, etc?
 mmp :: CsInsn -> [AstNodeType]
 mmp a = case (mnemonic a) of
           "add" -> add_s a

@@ -8,6 +8,7 @@ import           Hapstone.Internal.Capstone as Capstone
 import           Hapstone.Internal.X86      as X86
 import           Util
 import           AstContext
+import           Data.Maybe
 
 --ll, ml, hl
 
@@ -78,20 +79,53 @@ pop inst =
 
 mov ::  CsInsn -> [AstNodeType]
 mov inst =
-  let op1 = get_first_opr_value inst
-  in case op1 of
-    (Imm value) -> [BvNode value 32]
-    (Reg reg) -> [GetReg (X86Reg reg)]
-    (Mem mem) ->  [AssertNode "pop with imm, wtf"]
+  let
+    (op1 : op2 : _) = x86operands inst
+  in
+    [store_node (value op1) (getOperandAst (value op2))]
+
+
+getCsX86arch :: Maybe CsDetail -> Maybe CsX86
+getCsX86arch inst =
+            let arch = maybe Nothing archInfo inst
+            in case arch of
+              Just (X86 csx86) -> Just csx86
+              _ -> Nothing
+
+x86operands :: CsInsn -> [CsX86Op]
+x86operands inst =
+        let
+              arch2 = getCsX86arch (Capstone.detail inst)
+              ops = maybe [] operands arch2
+        in
+          ops
+
+--        x = maybe (Just d) (Capstone.detail insn)
+
+-- return first operand in a instruction
+-- insn_opr :: Int -> CsInsn -> Maybe CsX86Op
+-- insn_opr i insn = case Capstone.detail insn of
+--   Nothing -> Nothing
+--   Just d -> case archInfo d of
+--     Nothing        -> Nothing
+--     Just (X86 ari) -> if length (operands ari) < i
+--       then Nothing
+--       else Just $ (operands ari) !! i
+--
+-- get_first_opr_value :: CsInsn -> CsX86OpValue
+-- get_first_opr_value insn = case insn_opr 0 insn of
+--   Nothing -> error ("nothing in first operand " ++ show insn)
+--   Just op -> value op
 
 
 --isolate x86 32 bit specific stuff so its easier to refactor later
 stack_register :: Register
 stack_register = (X86Reg X86RegEsp)
 
+--byte size is ignored
 store_node :: CsX86OpValue -> AstNodeType -> AstNodeType
 store_node operand store_what =
             case operand of
-              (Reg reg) -> (SetReg stack_register store_what)
+              (Reg reg) -> (SetReg (X86Reg reg) store_what)
               (Mem mem) -> Store (getLeaAst mem) store_what
               (Imm _) -> AssertNode "store to imm, wtf"

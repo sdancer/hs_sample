@@ -14,7 +14,7 @@ simplification = Simplify { buffer = first_pass }
 main = hspec $ do
 discribe "Test1" $ do
 it "returns first_pass result" $ do
-first_pass shouldBe ([(setreg 'eax' (lit 1)), (setreg 'eax' (lit 2))])
+first_pass shouldBe ([[SetReg (X86Reg X86RegEax) (BvNode 1 32)],[SetReg (X86Reg X86RegEax) (BvNode 2 32)]])
 it "returns simplification result" $ do
 simplification shouldBe (setreg 'eax' (lit 2))
 
