@@ -99,24 +99,6 @@ x86operands inst =
         in
           ops
 
---        x = maybe (Just d) (Capstone.detail insn)
-
--- return first operand in a instruction
--- insn_opr :: Int -> CsInsn -> Maybe CsX86Op
--- insn_opr i insn = case Capstone.detail insn of
---   Nothing -> Nothing
---   Just d -> case archInfo d of
---     Nothing        -> Nothing
---     Just (X86 ari) -> if length (operands ari) < i
---       then Nothing
---       else Just $ (operands ari) !! i
---
--- get_first_opr_value :: CsInsn -> CsX86OpValue
--- get_first_opr_value insn = case insn_opr 0 insn of
---   Nothing -> error ("nothing in first operand " ++ show insn)
---   Just op -> value op
-
-
 --isolate x86 32 bit specific stuff so its easier to refactor later
 stack_register :: Register
 stack_register = (X86Reg X86RegEsp)
