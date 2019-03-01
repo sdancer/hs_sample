@@ -1,5 +1,7 @@
 module Asm where
 
+-- to be deleted code
+
 import           Data.Bits
 import qualified Data.ByteString            as BS
 import qualified Data.List                  as List
@@ -21,6 +23,7 @@ data Registers = Registers {
   esp    :: AsmValue,
   eflags :: Word32
 } deriving (Show)
+
 data ProccessedInsn = Insn CsInsn | Skip CsInsn | Break CsInsn | WallSE CsInsn deriving (Show)
 type InsnAddr = Word64
 type BlockAddr = Word64
@@ -43,7 +46,7 @@ data State = State {
 
 new_state :: BS.ByteString -> State
 new_state contents = State {
-    mem_data=contents, 
+    mem_data=contents,
     blocks=empty,
     blocks_queue=[0x1DBF71A],
     regs=Registers {
