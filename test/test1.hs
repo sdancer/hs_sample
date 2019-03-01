@@ -4,8 +4,11 @@ import Test.Hspec
 import Test.QuickCheck
 import Control.Exception (evaluate)
 
+import Lifter
+import Simplify
+
 input = [0xB8, 0x01, 0x00, 0x00, 0x00, 0xB8, 0x02, 0x00, 0x00, 0x00]
-first_pass = FirstPass { buffer = input }
+first_pass = liftFromBuffer { buffer = input }
 simplification = Simplify { buffer = first_pass }
 
 main = hspec $ do
@@ -13,7 +16,7 @@ discribe "Test1" $ do
 it "returns first_pass result" $ do
 first_pass shouldBe ([(setreg 'eax' (lit 1)), (setreg 'eax' (lit 2))])
 it "returns simplification result" $ do
-simplification shouldBe ("setreg 'eax' (lit 2)")
+simplification shouldBe (setreg 'eax' (lit 2))
 
 {- |
 asm:
@@ -51,7 +54,7 @@ first pass(individual instruction lift):
   ...
 
 after simplification:
-  (setreg 'eax' (lit 2))
+  (setreg 'eax' (lit 3))
 -}
 
 -- input = { 0xB8, 0x01, 0x00, 0x00, 0x00, 0x83, 0xC0, 0x05, 0x83, 0xE8, 0x03 }

@@ -16,7 +16,7 @@ add_s inst =
   let op1 = getOperandAst $ get_first_opr_value inst
       op2 = getOperandAst $ get_second_opr_value inst
   in [
-      BvaddNode op1 op2,
+      store_node (get_first_opr_value inst) (BvaddNode op1 op2),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
       SetFlag Parity (AssertNode "Parity flag unimplemented"),
       SetFlag Sign (AssertNode "Sign flag unimplemented"),
@@ -30,7 +30,7 @@ sub_s inst =
   let op1 = getOperandAst $ get_first_opr_value inst
       op2 = getOperandAst $ get_second_opr_value inst
   in [
-      BvsubNode op1 op2,
+      store_node (get_first_opr_value inst) (BvsubNode op1 op2),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
       SetFlag Parity (AssertNode "Parity flag unimplemented"),
       SetFlag Sign (AssertNode "Sign flag unimplemented"),
@@ -44,7 +44,7 @@ xor_s inst =
   let op1 = getOperandAst $ get_first_opr_value inst
       op2 = getOperandAst $ get_second_opr_value inst
   in [
-      BvxorNode op1 op2,
+      store_node (get_first_opr_value inst) (BvxorNode op1 op2),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
       SetFlag Parity (AssertNode "Parity flag unimplemented"),
       SetFlag Sign (AssertNode "Sign flag unimplemented"),
@@ -76,6 +76,22 @@ pop inst =
       pop_op
     ]
 
+mov ::  CsInsn -> [AstNodeType]
+mov inst =
+  let op1 = get_first_opr_value inst
+  in case op1 of
+    (Imm value) -> [BvNode value 32]
+    (Reg reg) -> [GetReg (X86Reg reg)]
+    (Mem mem) ->  [AssertNode "pop with imm, wtf"]
+
+
 --isolate x86 32 bit specific stuff so its easier to refactor later
 stack_register :: Register
 stack_register = (X86Reg X86RegEsp)
+
+store_node :: CsX86OpValue -> AstNodeType -> AstNodeType
+store_node operand store_what =
+            case operand of
+              (Reg reg) -> (SetReg stack_register store_what)
+              (Mem mem) -> Store (getLeaAst mem) store_what
+              (Imm _) -> AssertNode "store to imm, wtf"
