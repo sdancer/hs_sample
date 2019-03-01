@@ -1,5 +1,7 @@
 module BlockLifter where
 
+-- to be deleted code
+
 import           Asm
 import           Symbolic
 import           Data.Binary.Get
