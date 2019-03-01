@@ -14,10 +14,11 @@ import           Data.Maybe
 
 add_s :: CsInsn -> [AstNodeType]
 add_s inst =
-  let op1 = getOperandAst $ get_first_opr_value inst
-      op2 = getOperandAst $ get_second_opr_value inst
+  let (op1 : op2 : _ ) = x86operands inst
+      op1ast = getOperandAst $ value op1
+      op2ast = getOperandAst $ value op2
   in [
-      store_node (get_first_opr_value inst) (BvaddNode op1 op2),
+      store_node (value op1) (BvaddNode op1ast op2ast),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
       SetFlag Parity (AssertNode "Parity flag unimplemented"),
       SetFlag Sign (AssertNode "Sign flag unimplemented"),
@@ -28,10 +29,11 @@ add_s inst =
 
 sub_s :: CsInsn -> [AstNodeType]
 sub_s inst =
-  let op1 = getOperandAst $ get_first_opr_value inst
-      op2 = getOperandAst $ get_second_opr_value inst
+  let (op1 : op2 : _ ) = x86operands inst
+      op1ast = getOperandAst $ value op1
+      op2ast = getOperandAst $ value op2
   in [
-      store_node (get_first_opr_value inst) (BvsubNode op1 op2),
+      store_node (value op1) (BvsubNode op1ast op2ast),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
       SetFlag Parity (AssertNode "Parity flag unimplemented"),
       SetFlag Sign (AssertNode "Sign flag unimplemented"),
@@ -42,10 +44,11 @@ sub_s inst =
 
 xor_s :: CsInsn -> [AstNodeType]
 xor_s inst =
-  let op1 = getOperandAst $ get_first_opr_value inst
-      op2 = getOperandAst $ get_second_opr_value inst
+  let (op1 : op2 : _ ) = x86operands inst
+      op1ast = getOperandAst $ value op1
+      op2ast = getOperandAst $ value op2
   in [
-      store_node (get_first_opr_value inst) (BvxorNode op1 op2),
+      store_node (value op1) (BvxorNode op1ast op2ast),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
       SetFlag Parity (AssertNode "Parity flag unimplemented"),
       SetFlag Sign (AssertNode "Sign flag unimplemented"),
@@ -67,20 +70,16 @@ pop inst =
   --whenever the operation is a store reg or store mem depends on op1
   let
     read_exp = Read (BvaddNode (GetReg stack_register) (BvNode 4 32))
-    pop_op = case (get_first_opr_value inst) of
-              (Reg reg) -> (SetReg stack_register read_exp)
-              (Mem mem) -> Store (getLeaAst mem) read_exp
-              (Imm _) -> AssertNode "pop with imm, wtf"
   in
    [
       SetReg stack_register (BvaddNode (GetReg stack_register) (BvNode 4 32)),
-      pop_op
+      store_node (get_first_opr_value inst) read_exp
     ]
 
 mov ::  CsInsn -> [AstNodeType]
 mov inst =
   let
-    (op1 : op2 : _) = x86operands inst
+    (op1 : op2 : _ ) = x86operands inst
   in
     [store_node (value op1) (getOperandAst (value op2))]
 
