@@ -8,8 +8,8 @@ import Lifter
 
 main :: IO ()
 main = do
-  contents <- BS.readFile "bs/blackcipher.aes"
-  print "hello"
+  -- contents <- BS.readFile "bs/blackcipher.aes"
+  print "this should be in test/"
   let input = [0xB8, 0x01, 0x00, 0x00, 0x00, 0xB8, 0x02, 0x00, 0x00, 0x00]
   asm <- disasm_buf input
   case asm of
