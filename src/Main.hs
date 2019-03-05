@@ -1,15 +1,10 @@
 module Main where
-
-import qualified Data.ByteString            as BS
-import           System.IO
-
+import System.IO
 import Lifter
 --import Simplify
 
 main :: IO ()
 main = do
-  contents <- BS.readFile "bs/blackcipher.aes"
-  print "hello"
   let input = [0xB8, 0x01, 0x00, 0x00, 0x00, 0xB8, 0x02, 0x00, 0x00, 0x00]
   asm <- disasm_buf input
   case asm of
