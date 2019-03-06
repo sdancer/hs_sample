@@ -2,26 +2,11 @@ module Main where
 
 import Test.Tasty
 import Test.Tasty.HUnit
---import Test.Tasty.SmallCheck as SC
---import Test.HUnit.Base
-
---import qualified Data.ByteString            as BS
 
 import Lifter
 import Ast
 
 import Data.Word
---import Examples
-
---first_pass = liftFromBuffer { buffer = input }
---simplification = Simplify { buffer = first_pass }
-
--- main = hspec $ do
--- discribe "Test1" $ do
--- it "returns first_pass result" $ do
--- first_pass shouldBe ([[SetReg (X86Reg X86RegEax) (BvNode 1 32)],[SetReg (X86Reg X86RegEax) (BvNode 2 32)]])
--- it "returns simplification result" $ do
--- simplification shouldBe (setreg 'eax' (lit 2))
 
 
 safeHead :: [a] -> Maybe a
@@ -39,7 +24,7 @@ main = defaultMain $
     assertEqual "the list is not empty" [[(AssertNode "error")]] l
     -- assertion no. 3 (would have failed, but won't be executed because
     -- the previous assertion has already failed)
-    "foo" @?= "bar"
+    l @?= [[SetReg (X86Reg X86RegEax) (BvNode 1 32)],[SetReg (X86Reg X86RegEax) (BvNode 2 32)]]
 
 -- tests :: TestTree
 -- tests = testGroup "Testing Examples" [unitTests]
