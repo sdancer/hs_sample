@@ -20,3 +20,10 @@ liftAsm buf = map mmp buf
 
 disasm_buf :: [Word8] -> IO (Either CsErr [CsInsn])
 disasm_buf buffer = disasmSimpleIO $ disasm buffer 0
+
+liftX86toAst :: [Word8] -> IO [[AstNodeType]]
+liftX86toAst input = do
+    asm <- disasm_buf input
+    return (case asm of
+      Left _ -> [[(AssertNode "dissasm error")]]
+      Right b -> liftAsm b)
