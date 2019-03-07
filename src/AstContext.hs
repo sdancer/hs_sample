@@ -7,10 +7,11 @@ import           Hapstone.Internal.Capstone as Capstone
 import           Hapstone.Internal.X86      as X86
 import           Data.Word
 
-getOperandAst :: CsX86OpValue -> AstNodeType
-getOperandAst (Imm value) = BvNode value 32
-getOperandAst (Reg reg) = (GetReg (X86Reg reg))
-getOperandAst (Mem mem) = Read (getLeaAst mem)
+getOperandAst :: CsX86Op -> AstNodeType
+getOperandAst op = case value op of
+  (Imm value) -> BvNode value ((size op) * 8)
+  (Reg reg) -> GetReg (X86Reg reg)
+  (Mem mem) -> Read (getLeaAst mem)
 
 
 getLeaAst :: X86OpMemStruct -> AstNodeType

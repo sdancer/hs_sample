@@ -12,11 +12,14 @@ import           Data.Maybe
 
 --ll, ml, hl
 
+--cf_add_s inst parent dst op1 op2 =
+
+
 add_s :: CsInsn -> [AstNodeType]
 add_s inst =
   let (op1 : op2 : _ ) = x86operands inst
-      op1ast = getOperandAst $ value op1
-      op2ast = getOperandAst $ value op2
+      op1ast = getOperandAst op1
+      op2ast = getOperandAst op2
   in [
       store_node (value op1) (BvaddNode op1ast op2ast),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
@@ -30,8 +33,8 @@ add_s inst =
 sub_s :: CsInsn -> [AstNodeType]
 sub_s inst =
   let (op1 : op2 : _ ) = x86operands inst
-      op1ast = getOperandAst $ value op1
-      op2ast = getOperandAst $ value op2
+      op1ast = getOperandAst op1
+      op2ast = getOperandAst op2
   in [
       store_node (value op1) (BvsubNode op1ast op2ast),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
@@ -45,8 +48,8 @@ sub_s inst =
 xor_s :: CsInsn -> [AstNodeType]
 xor_s inst =
   let (op1 : op2 : _ ) = x86operands inst
-      op1ast = getOperandAst $ value op1
-      op2ast = getOperandAst $ value op2
+      op1ast = getOperandAst op1
+      op2ast = getOperandAst op2
   in [
       store_node (value op1) (BvxorNode op1ast op2ast),
       SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
@@ -59,10 +62,11 @@ xor_s inst =
 
 push ::  CsInsn -> [AstNodeType]
 push inst =
-  let op1 = getOperandAst $ get_first_opr_value inst
+  let (op1 : _) = x86operands inst
+      op1ast = getOperandAst op1
   in [
       SetReg stack_register (BvsubNode (GetReg stack_register) (BvNode 4 32)),
-      Store (GetReg stack_register) op1
+      Store (GetReg stack_register) op1ast
     ]
 
 pop ::  CsInsn -> [AstNodeType]
@@ -81,7 +85,7 @@ mov inst =
   let
     (op1 : op2 : _ ) = x86operands inst
   in
-    [store_node (value op1) (getOperandAst (value op2))]
+    [store_node (value op1) (getOperandAst op2)]
 
 
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86

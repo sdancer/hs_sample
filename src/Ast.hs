@@ -45,7 +45,7 @@ data AstNodeType = BvaddNode AstNodeType AstNodeType
              | BvuremNode AstNodeType AstNodeType
              | BvxnorNode AstNodeType AstNodeType
              | BvxorNode AstNodeType AstNodeType
-             | BvNode Word64 Int
+             | BvNode Word64 Word8
              | CompoundNode -- ! `[<expr1> <expr2> <expr3> ...]` node
              | ConcatNode [AstNodeType]
              | DecimalNode Int --float?
