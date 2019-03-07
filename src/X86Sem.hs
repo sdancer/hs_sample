@@ -12,22 +12,91 @@ import           Data.Maybe
 
 --ll, ml, hl
 
---cf_add_s inst parent dst op1 op2 =
+-- Make operation to set the zero flag to the value that it would have after some operation
 
+zf_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType
+zf_s inst parent dst =
+  let bv_size = (size dst) * 8 in
+    IteNode
+      (EqualNode (ExtractNode (bv_size - 1) 0 parent) (BvNode 0 bv_size))
+      (BvNode 1 1)
+      (BvNode 0 1)
+
+-- Make operation to set the overflow flag to the value that it would have after an add operation
+of_add_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+of_add_s inst parent dst op1ast op2ast =
+  let bv_size = (size dst) * 8 in
+    ExtractNode (bv_size - 1) (bv_size - 1)
+      (BvandNode
+        (BvxorNode op1ast (BvnotNode op2ast))
+        (BvxorNode op1ast (ExtractNode (bv_size - 1) 0 parent)))
+
+-- Make operation to set the carry flag to the value that it would have after an add operation
+cf_add_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+cf_add_s inst parent dst op1ast op2ast =
+  let bv_size = (size dst) * 8 in
+    ExtractNode (bv_size - 1) (bv_size - 1)
+      (BvxorNode (BvandNode op1ast op2ast)
+        (BvandNode (BvxorNode
+            (BvxorNode op1ast op2ast)
+            (ExtractNode (bv_size - 1) 0 parent))
+          (BvxorNode op1ast op2ast)))
+
+-- Make operation to set the adjust flag to the value that it would have after some operation
+af_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+af_s inst parent dst op1ast op2ast =
+  let bv_size = (size dst) * 8 in
+    IteNode
+      (EqualNode
+        (BvNode 0x10 bv_size)
+        (BvandNode
+          (BvNode 0x10 bv_size)
+          (BvxorNode
+            (ExtractNode (bv_size - 1) 0 parent)
+            (BvxorNode op1ast op2ast))))
+      (BvNode 1 1)
+      (BvNode 0 1)
+
+byte_size_bit = 8
+
+-- Make operation to set the parity flag to the value that it would have after some operation
+
+pf_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType
+pf_s inst parent dst =
+  let loop counter =
+        (if counter == byte_size_bit
+          then (BvNode 1 1)
+          else (BvxorNode
+            (loop (counter + 1))
+            (ExtractNode 0 0
+              (BvlshrNode
+                (ExtractNode 7 0 parent)
+                (BvNode (fromIntegral counter) byte_size_bit))))) in
+    loop 0
+
+-- Make operation to set the sign flag to the value that it would have after some operation
+
+sf_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType
+sf_s inst parent dst =
+  let bv_size = (size dst) * 8 in
+    (ExtractNode (bv_size - 1) (bv_size - 1) parent)
+
+-- Make list of operations in the IR that has the same semantics as the X86 add instruction
 
 add_s :: CsInsn -> [AstNodeType]
 add_s inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
       op2ast = getOperandAst op2
+      add_node = (BvaddNode op1ast op2ast)
   in [
-      store_node (value op1) (BvaddNode op1ast op2ast),
-      SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
-      SetFlag Parity (AssertNode "Parity flag unimplemented"),
-      SetFlag Sign (AssertNode "Sign flag unimplemented"),
-      SetFlag Zero (AssertNode "Zero flag unimplemented"),
-      SetFlag Carry (AssertNode "Carry flag unimplemented"),
-      SetFlag Overflow (AssertNode "Overflow flag unimplemented")
+      store_node (value op1) add_node,
+      SetFlag Adjust (af_s inst add_node op1 op1ast op1ast),
+      SetFlag Parity (pf_s inst add_node op1),
+      SetFlag Sign (sf_s inst add_node op1),
+      SetFlag Zero (zf_s inst add_node op1),
+      SetFlag Carry (cf_add_s inst add_node op1 op1ast op1ast),
+      SetFlag Overflow (of_add_s inst add_node op1 op1ast op1ast)
     ]
 
 sub_s :: CsInsn -> [AstNodeType]

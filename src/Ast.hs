@@ -52,7 +52,7 @@ data AstNodeType = BvaddNode AstNodeType AstNodeType
              | DeclareNode --wtf?
              | DistinctNode AstNodeType AstNodeType
              | EqualNode AstNodeType AstNodeType
-             | ExtractNode Int Int  AstNodeType -- ! `((_ extract <high> <low>) <expr>)` node
+             | ExtractNode Word8 Word8  AstNodeType -- ! `((_ extract <high> <low>) <expr>)` node
              | IffNode AstNodeType AstNodeType -- ! `(iff <expr1> <expr2>)`
              | IteNode AstNodeType AstNodeType AstNodeType -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
              | LandNode AstNodeType AstNodeType
