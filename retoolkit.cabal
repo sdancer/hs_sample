@@ -20,7 +20,7 @@ library rekitlib
             , AstContext
             , X86Sem
             , EvalAst
-
+            , REAstTools
  build-depends:     base >=4.5 && <9.8
                     , containers
                     , bytestring
@@ -33,13 +33,10 @@ executable rekit_cli
  main-is:           Main.hs
  other-modules:
             Ast
-            , Asm
-            , Symbolic
-            , Util
-            , Lifter
-            , AstContext
-            , X86Sem
-            , EvalAst
+            ,AstContext
+            ,Lifter
+            ,Util
+            ,X86Sem
 
  build-depends:     base >=4.5 && <9.8
                     , containers

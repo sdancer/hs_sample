@@ -1,4 +1,4 @@
-module RE.AstTools where
+module REAstTools where
 
 import Ast
 
