@@ -13,6 +13,9 @@ mmp :: CsInsn -> [AstNodeType]
 mmp a = case (mnemonic a) of
           "add" -> add_s a
           "mov" -> mov a
+          "xor" -> xor_s a
+          "push" -> push a
+          "pop" -> pop a
           otherwise -> [AssertNode otherwise]
 
 liftAsm :: [CsInsn] -> [[AstNodeType]]
