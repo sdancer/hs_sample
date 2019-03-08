@@ -12,6 +12,7 @@ import            Data.Word
 mmp :: CsInsn -> [AstNodeType]
 mmp a = case (mnemonic a) of
           "add" -> add_s a
+          "sub" -> sub_s a
           "mov" -> mov a
           "xor" -> xor_s a
           "push" -> push a
