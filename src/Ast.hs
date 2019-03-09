@@ -45,14 +45,14 @@ data AstNodeType = BvaddNode AstNodeType AstNodeType
              | BvuremNode AstNodeType AstNodeType
              | BvxnorNode AstNodeType AstNodeType
              | BvxorNode AstNodeType AstNodeType
-             | BvNode Word64 Int
+             | BvNode Word64 Word8
              | CompoundNode -- ! `[<expr1> <expr2> <expr3> ...]` node
              | ConcatNode [AstNodeType]
              | DecimalNode Int --float?
              | DeclareNode --wtf?
              | DistinctNode AstNodeType AstNodeType
              | EqualNode AstNodeType AstNodeType
-             | ExtractNode Int Int  AstNodeType -- ! `((_ extract <high> <low>) <expr>)` node
+             | ExtractNode Word8 Word8  AstNodeType -- ! `((_ extract <high> <low>) <expr>)` node
              | IffNode AstNodeType AstNodeType -- ! `(iff <expr1> <expr2>)`
              | IteNode AstNodeType AstNodeType AstNodeType -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
              | LandNode AstNodeType AstNodeType
