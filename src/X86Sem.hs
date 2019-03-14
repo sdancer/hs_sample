@@ -23,6 +23,7 @@ zf_s inst parent dst =
       (BvNode 0 1)
 
 -- Make operation to set the overflow flag to the value that it would have after an add operation
+
 of_add_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
 of_add_s inst parent dst op1ast op2ast =
   let bv_size = (size dst) * 8 in
@@ -32,6 +33,7 @@ of_add_s inst parent dst op1ast op2ast =
         (BvxorNode op1ast (ExtractNode (bv_size - 1) 0 parent)))
 
 -- Make operation to set the carry flag to the value that it would have after an add operation
+
 cf_add_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
 cf_add_s inst parent dst op1ast op2ast =
   let bv_size = (size dst) * 8 in
@@ -43,6 +45,7 @@ cf_add_s inst parent dst op1ast op2ast =
           (BvxorNode op1ast op2ast)))
 
 -- Make operation to set the adjust flag to the value that it would have after some operation
+
 af_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
 af_s inst parent dst op1ast op2ast =
   let bv_size = (size dst) * 8 in
@@ -99,19 +102,44 @@ add_s inst =
       SetFlag Overflow (of_add_s inst add_node op1 op1ast op1ast)
     ]
 
+-- Make operation to set the carry flag to the value that it would have after an sub operation
+
+cf_sub_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+cf_sub_s inst parent dst op1ast op2ast =
+  let bv_size = (size dst) * 8 in
+    ExtractNode (bv_size - 1) (bv_size - 1)
+      (BvxorNode
+        (BvxorNode op1ast (BvxorNode op2ast (ExtractNode (bv_size - 1) 0 parent)))
+        (BvandNode
+          (BvxorNode op1ast (ExtractNode (bv_size - 1) 0 parent))
+          (BvxorNode op1ast op2ast)))
+
+-- Make operation to set the overflow flag to the value that it would have after an sub operation
+
+of_sub_s :: CsInsn -> AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+of_sub_s inst parent dst op1ast op2ast =
+  let bv_size = (size dst) * 8 in
+    ExtractNode (bv_size - 1) (bv_size - 1)
+      (BvandNode
+        (BvxorNode op1ast op2ast)
+        (BvxorNode op1ast (ExtractNode (bv_size - 1) 0 parent)))
+
+-- Make list of operations in the IR that has the same semantics as the X86 sub instruction
+
 sub_s :: CsInsn -> [AstNodeType]
 sub_s inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
       op2ast = getOperandAst op2
+      sub_node = (BvsubNode op1ast op2ast)
   in [
-      store_node (value op1) (BvsubNode op1ast op2ast),
-      SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
-      SetFlag Parity (AssertNode "Parity flag unimplemented"),
-      SetFlag Sign (AssertNode "Sign flag unimplemented"),
-      SetFlag Zero (AssertNode "Zero flag unimplemented"),
-      SetFlag Carry (AssertNode "Carry flag unimplemented"),
-      SetFlag Overflow (AssertNode "Overflow flag unimplemented")
+      store_node (value op1) sub_node,
+      SetFlag Adjust (af_s inst sub_node op1 op1ast op1ast),
+      SetFlag Parity (pf_s inst sub_node op1),
+      SetFlag Sign (sf_s inst sub_node op1),
+      SetFlag Zero (zf_s inst sub_node op1),
+      SetFlag Carry (cf_sub_s inst sub_node op1 op1ast op1ast),
+      SetFlag Overflow (of_sub_s inst sub_node op1 op1ast op1ast)
     ]
 
 xor_s :: CsInsn -> [AstNodeType]
