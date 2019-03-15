@@ -142,19 +142,22 @@ sub_s inst =
       SetFlag Overflow (of_sub_s inst sub_node op1 op1ast op1ast)
     ]
 
+-- Make list of operations in the IR that has the same semantics as the X86 xor instruction
+
 xor_s :: CsInsn -> [AstNodeType]
 xor_s inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
       op2ast = getOperandAst op2
+      xor_node = (BvxorNode op1ast op2ast)
   in [
-      store_node (value op1) (BvxorNode op1ast op2ast),
-      SetFlag Adjust (AssertNode "Adjust flag unimplemented"),
-      SetFlag Parity (AssertNode "Parity flag unimplemented"),
-      SetFlag Sign (AssertNode "Sign flag unimplemented"),
-      SetFlag Zero (AssertNode "Zero flag unimplemented"),
-      SetFlag Carry (AssertNode "Carry flag unimplemented"),
-      SetFlag Overflow (AssertNode "Overflow flag unimplemented")
+      store_node (value op1) xor_node,
+      SetFlag Adjust UndefinedNode,
+      SetFlag Parity (pf_s inst xor_node op1),
+      SetFlag Sign (sf_s inst xor_node op1),
+      SetFlag Zero (zf_s inst xor_node op1),
+      SetFlag Carry (BvNode 0 1),
+      SetFlag Overflow (BvNode 0 1)
     ]
 
 push ::  CsInsn -> [AstNodeType]

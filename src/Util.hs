@@ -11,10 +11,10 @@ import           Numeric                    (showHex)
 getBinPart :: BS.ByteString -> Int -> Int -> [Word8]
 getBinPart contents from cnt = BS.unpack $ BS.take cnt $ BS.drop from contents
 
-disasm :: [Word8] -> Word64 -> Disassembler ()
-disasm intel_asm_buf start_addr = Disassembler {
+disasm :: [CsMode] -> [Word8] -> Word64 -> Disassembler ()
+disasm modes intel_asm_buf start_addr = Disassembler {
     arch = Capstone.CsArchX86 -- ^ Options: CsArchArm, CsArchArm64, CsArchMips, CsArchX86, CsArchPpc, CsArchSparc, CsArchSysz, CsArchXcore
-    , modes = [Capstone.CsMode32] -- ^ Modes (some may be combined by adding to the list): CsModeLittleEndian, CsModeArm, CsMode16 (16-bit x86), CsMode32 (32-bit x86), CsMode64 (64-bit x86-64/amd64 or PPC), CsModeThumb, CsModeMclass, CsModeV8 (ARMv8 A32), CsModeMicro, CsModeMips3, CsModeMips32r6, CsModeMipsGp64, CsModeV9 (SparcV9 mode), CsModeBigEndian, CsModeMips32, CsModeMips64
+    , modes = modes -- ^ Modes (some may be combined by adding to the list): CsModeLittleEndian, CsModeArm, CsMode16 (16-bit x86), CsMode32 (32-bit x86), CsMode64 (64-bit x86-64/amd64 or PPC), CsModeThumb, CsModeMclass, CsModeV8 (ARMv8 A32), CsModeMicro, CsModeMips3, CsModeMips32r6, CsModeMipsGp64, CsModeV9 (SparcV9 mode), CsModeBigEndian, CsModeMips32, CsModeMips64
     , buffer = intel_asm_buf -- ^ buffer to disassemble, as [Word8]
     , addr = start_addr -- ^ address of first byte in the buffer, as Word64
     , num = 0 -- ^ number of instructions to disassemble (0 for maximum)

@@ -64,6 +64,7 @@ data AstNodeType = BvaddNode AstNodeType AstNodeType
              | SxNode Int AstNodeType
              | VariableNode
              | ZxNode Int AstNodeType
+             | UndefinedNode -- The undefined value
              -- nodes fow low level
              | Store AstNodeType AstNodeType
              | Read AstNodeType

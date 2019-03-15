@@ -9,21 +9,22 @@ import            Util
 import            Data.Word
 
 --x86 vs arm, etc?
-mmp :: CsInsn -> [AstNodeType]
-mmp a = case (mnemonic a) of
-          "add" -> add_s a
-          "mov" -> mov a
-          otherwise -> [AssertNode otherwise]
+mmp :: [CsMode] -> CsInsn -> [AstNodeType]
+mmp modes a = case toEnum (fromIntegral (insnId a)) of
+          X86InsAdd -> add_s a
+          X86InsMov -> mov a
+          X86InsSub -> sub_s a
+          otherwise -> [AssertNode (mnemonic a)]
 
-liftAsm :: [CsInsn] -> [[AstNodeType]]
-liftAsm buf = map mmp buf
+liftAsm :: [CsMode] -> [CsInsn] -> [[AstNodeType]]
+liftAsm modes buf = map (mmp modes) buf
 
-disasm_buf :: [Word8] -> IO (Either CsErr [CsInsn])
-disasm_buf buffer = disasmSimpleIO $ disasm buffer 0
+disasm_buf :: [CsMode] -> [Word8] -> IO (Either CsErr [CsInsn])
+disasm_buf modes buffer = disasmSimpleIO $ disasm modes buffer 0
 
-liftX86toAst :: [Word8] -> IO [[AstNodeType]]
-liftX86toAst input = do
-    asm <- disasm_buf input
+liftX86toAst :: [CsMode] -> [Word8] -> IO [[AstNodeType]]
+liftX86toAst modes input = do
+    asm <- disasm_buf modes input
     return (case asm of
       Left _ -> [[(AssertNode "dissasm error")]]
-      Right b -> liftAsm b)
+      Right b -> liftAsm modes b)
