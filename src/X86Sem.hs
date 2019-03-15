@@ -160,23 +160,25 @@ xor_s inst =
       SetFlag Overflow (BvNode 0 1)
     ]
 
-push_s ::  CsInsn -> [AstNodeType]
-push_s inst =
+push_s :: [CsMode] -> CsInsn -> [AstNodeType]
+push_s modes inst =
   let (op1 : _) = x86operands inst
       op1ast = getOperandAst op1
+      sp = (stack_reg modes)
   in [
-      SetReg stack_register (BvsubNode (GetReg stack_register) (BvNode 4 32)),
-      Store (GetReg stack_register) op1ast
+      SetReg sp (BvsubNode (GetReg sp) (BvNode 4 32)),
+      Store (GetReg sp) op1ast
     ]
 
-pop_s ::  CsInsn -> [AstNodeType]
-pop_s inst =
+pop_s :: [CsMode] -> CsInsn -> [AstNodeType]
+pop_s modes inst =
   --whenever the operation is a store reg or store mem depends on op1
   let
-    read_exp = Read (BvaddNode (GetReg stack_register) (BvNode 4 32))
+    sp = (stack_reg modes)
+    read_exp = Read (BvaddNode (GetReg sp) (BvNode 4 32))
   in
    [
-      SetReg stack_register (BvaddNode (GetReg stack_register) (BvNode 4 32)),
+      SetReg sp (BvaddNode (GetReg sp) (BvNode 4 32)),
       store_node (get_first_opr_value inst) read_exp
     ]
 
@@ -203,9 +205,14 @@ x86operands inst =
         in
           ops
 
---isolate x86 32 bit specific stuff so its easier to refactor later
-stack_register :: Register
-stack_register = (X86Reg X86RegEsp)
+stack_reg :: [CsMode] -> Register
+stack_reg mode =
+  if elem CsMode32 mode then
+    (X86Reg X86RegEsp)
+  else if elem CsMode32 mode then
+    (X86Reg X86RegRsp)
+  else
+    error "Processor modes underspecified."
 
 --byte size is ignored
 store_node :: CsX86OpValue -> AstNodeType -> AstNodeType
