@@ -160,8 +160,8 @@ xor_s inst =
       SetFlag Overflow (BvNode 0 1)
     ]
 
-push ::  CsInsn -> [AstNodeType]
-push inst =
+push_s ::  CsInsn -> [AstNodeType]
+push_s inst =
   let (op1 : _) = x86operands inst
       op1ast = getOperandAst op1
   in [
@@ -169,8 +169,8 @@ push inst =
       Store (GetReg stack_register) op1ast
     ]
 
-pop ::  CsInsn -> [AstNodeType]
-pop inst =
+pop_s ::  CsInsn -> [AstNodeType]
+pop_s inst =
   --whenever the operation is a store reg or store mem depends on op1
   let
     read_exp = Read (BvaddNode (GetReg stack_register) (BvNode 4 32))
