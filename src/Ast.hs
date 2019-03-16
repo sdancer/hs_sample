@@ -48,7 +48,7 @@ data AstNode = BvaddNode AstNode AstNode
              | DeclareNode --wtf?
              | DistinctNode AstNode AstNode
              | EqualNode AstNode AstNode
-             | ExtractNode Word8 Word8  AstNode -- ! `((_ extract <high> <low>) <expr>)` node
+             | ExtractNode Word8 Word8 AstNode -- ! `((_ extract <high> <low>) <expr>)` node
              | IffNode AstNode AstNode -- ! `(iff <expr1> <expr2>)`
              | IteNode AstNode AstNode AstNode -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
              | LandNode AstNode AstNode

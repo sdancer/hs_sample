@@ -2,16 +2,23 @@ module X86Sem where
 
 import Ast
 import AstContext (getOperandAst)
-
-import           Hapstone.Capstone
-import           Hapstone.Internal.Capstone as Capstone
-import           Hapstone.Internal.X86      as X86
-import           Util
-import           AstContext
-import           Data.Maybe
-import           Data.Word
+import Hapstone.Capstone
+import Hapstone.Internal.Capstone as Capstone
+import Hapstone.Internal.X86      as X86
+import Util
+import AstContext
+import Data.Maybe
+import Data.Word
 
 --ll, ml, hl
+
+byte_size_bit = 8
+word_size_bit = 16
+dword_size_bit = 32
+qword_size_bit = 64
+dqword_size_bit = 128
+qqword_size_bit = 256
+dqqword_size_bit = 512
 
 -- Make operation to set the zero flag to the value that it would have after some operation
 
@@ -60,8 +67,6 @@ af_s parent dst op1ast op2ast =
             (BvxorNode op1ast op2ast))))
       (BvNode 1 1)
       (BvNode 0 1)
-
-byte_size_bit = 8
 
 -- Make operation to set the parity flag to the value that it would have after some operation
 
@@ -161,8 +166,12 @@ xor_s inst =
       SetFlag Overflow (BvNode 0 1)
     ]
 
+-- Convert instance of integral type to instance of some numerical type
+
 convert :: Integral a => Num b => a -> b
 convert a = (fromInteger (toInteger a))
+
+-- Make list of operations in the IR that has the same semantics as the X86 push instruction
 
 push_s :: [CsMode] -> CsInsn -> [AstNode]
 push_s modes inst =
@@ -178,8 +187,13 @@ push_s modes inst =
       Store (GetReg sp) (ZxNode (convert ((op_size - (size op1)) * 8)) (getOperandAst op1))
     ]
 
-includeIf :: Bool -> a -> [a]
-includeIf cond ele = if cond then [ele] else []
+-- Makes a singleton list containing the argument if the condition is true. Otherwise makes
+-- the empty list.
+
+includeIf :: Bool -> [a] -> [a]
+includeIf cond sublist = if cond then sublist else []
+
+-- Given the target processor mode, get the largest register containing this register
 
 get_parent_register :: [CsMode] -> X86Reg -> X86Reg
 
@@ -247,31 +261,93 @@ get_parent_register modes reg | elem CsMode64 modes =
     X86RegR15d -> X86RegR15
     otherwise -> otherwise
 
+-- Make list of operations in the IR that has the same semantics as the X86 pop instruction
+
 pop_s :: [CsMode] -> CsInsn -> [AstNode]
 pop_s modes inst =
-  --whenever the operation is a store reg or store mem depends on op1
   let (op1 : _) = x86operands inst
       sp = get_stack_reg modes
       arch_size = get_arch_size modes
       op_size = convert (size op1)
+      -- Is the ESP register is used as a base register for addressing a destination operand in memory?
       sp_base = case (value op1) of
         (Mem mem_struct) | get_parent_register modes (base mem_struct) == sp -> True
         _ -> False
+      -- Is the destination register is SP?
       sp_reg = case (value op1) of
         (Reg reg) | get_parent_register modes reg == sp -> True
         _ -> False
+      -- The new value of the stack pointer
+      new_sp_val = BvaddNode (GetReg sp) (BvNode op_size (arch_size * 8))
   in
-    (includeIf sp_base $ SetReg sp (BvaddNode (GetReg sp) (BvNode op_size (arch_size * 8))))
-    ++ [store_node (value op1) (Read (BvaddNode (GetReg sp) (BvNode op_size (arch_size * 8))))]
-    ++ (includeIf (not (sp_base || sp_reg)) $ SetReg sp (BvaddNode (GetReg sp) (BvNode op_size (arch_size * 8))))
+    (includeIf sp_base [SetReg sp new_sp_val])
+    ++ [store_node (value op1) (Read new_sp_val)]
+    ++ (includeIf (not (sp_base || sp_reg)) [SetReg sp new_sp_val])
+
+-- Checks if the given register is a segment register
+
+is_segment_reg :: X86.X86Reg -> Bool
+is_segment_reg reg = case reg of
+  X86RegCs -> True
+  X86RegDs -> True
+  X86RegSs -> True
+  X86RegEs -> True
+  X86RegFs -> True
+  X86RegGs -> True
+  _ -> False
+
+-- Checks if the given register is a control register
+
+is_control_reg :: X86.X86Reg -> Bool
+is_control_reg reg = case reg of
+  X86RegCr0 -> True
+  X86RegCr1 -> True
+  X86RegCr2 -> True
+  X86RegCr3 -> True
+  X86RegCr4 -> True
+  X86RegCr5 -> True
+  X86RegCr6 -> True
+  X86RegCr7 -> True
+  X86RegCr8 -> True
+  X86RegCr9 -> True
+  X86RegCr10 -> True
+  X86RegCr11 -> True
+  X86RegCr12 -> True
+  X86RegCr13 -> True
+  X86RegCr14 -> True
+  X86RegCr15 -> True
+
+-- Make list of operations in the IR that has the same semantics as the X86 mov instruction
 
 mov ::  CsInsn -> [AstNode]
 mov inst =
-  let
-    (op1 : op2 : _ ) = x86operands inst
+  let (dst_op : src_op : _ ) = x86operands inst
+      dst_ast = getOperandAst dst_op
+      src_ast = getOperandAst src_op
+      dst_size_bit = (size dst_op) * 8
+      -- Segment registers are defined as 32 or 64 bit vectors in order to
+      -- avoid having to simulate the GDT. This definition allows users to
+      -- directly define their segments offset.
+      node = (case (value dst_op) of
+        (Reg reg) | is_segment_reg reg -> ExtractNode (word_size_bit - 1) 0 tmp_node
+        _ -> tmp_node)
+        where tmp_node = case (value src_op) of
+                (Reg reg) | is_segment_reg reg -> ExtractNode (dst_size_bit - 1) 0 src_ast
+                _ -> src_ast
+      undef = case (value src_op) of
+        (Reg reg) | is_control_reg reg -> True
+        _ -> case (value dst_op) of
+          (Reg reg) | is_control_reg reg -> True
+          _ -> False
   in
-    [store_node (value op1) (getOperandAst op2)]
-
+    [store_node (value dst_op) node]
+    ++ includeIf undef
+        [SetFlag Adjust UndefinedNode,
+        SetFlag Parity UndefinedNode,
+        SetFlag Sign UndefinedNode,
+        SetFlag Zero UndefinedNode,
+        SetFlag Carry UndefinedNode,
+        SetFlag Overflow UndefinedNode]
 
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86
 getCsX86arch inst =
@@ -303,7 +379,7 @@ get_arch_size modes =
 --byte size is ignored
 store_node :: CsX86OpValue -> AstNode -> AstNode
 store_node operand store_what =
-            case operand of
-              (Reg reg) -> (SetReg reg store_what)
-              (Mem mem) -> Store (getLeaAst mem) store_what
-              (Imm _) -> AssertNode "store to imm, wtf"
+  case operand of
+    (Reg reg) -> (SetReg reg store_what)
+    (Mem mem) -> Store (getLeaAst mem) store_what
+    (Imm _) -> AssertNode "store to imm, wtf"
