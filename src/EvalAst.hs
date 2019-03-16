@@ -1,6 +1,7 @@
 module EvalAst where
 
 import Ast
+import Hapstone.Internal.X86 as X86
 
 -- data Context = {
 --       registers = [...],
@@ -12,7 +13,7 @@ import qualified Data.Map.Strict as Map
 data MemRegions = Lol
 
 data ExecutionContext = ExecutionContext {
-        registers :: (Map.Map Register Int)
+        registers :: (Map.Map X86.X86Reg Int)
       , memory :: [MemRegions]
 }
 

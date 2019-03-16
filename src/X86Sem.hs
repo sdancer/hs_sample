@@ -161,30 +161,109 @@ xor_s inst =
       SetFlag Overflow (BvNode 0 1)
     ]
 
+convert :: Integral a => Num b => a -> b
+convert a = (fromInteger (toInteger a))
+
 push_s :: [CsMode] -> CsInsn -> [AstNode]
 push_s modes inst =
   let (op1 : _) = x86operands inst
-      sp = (stack_reg modes)
-      op1ast = getOperandAst op1
+      sp = (get_stack_reg modes)
+      arch_size = get_arch_size modes
+      -- If it's an immediate source, the memory access is always based on the arch size
       op_size = case (value op1) of
-        (Imm _) -> arch_size modes
+        (Imm _) -> arch_size
         _ -> size op1
   in [
-      SetReg sp (BvsubNode (GetReg sp) (BvNode (fromInteger (toInteger op_size)) ((arch_size modes) * 8))),
-      Store (GetReg sp) op1ast
+      SetReg sp (BvsubNode (GetReg sp) (BvNode (convert op_size) (arch_size * 8))),
+      Store (GetReg sp) (ZxNode (convert ((op_size - (size op1)) * 8)) (getOperandAst op1))
     ]
+
+includeIf :: Bool -> a -> [a]
+includeIf cond ele = if cond then [ele] else []
+
+get_parent_register :: [CsMode] -> X86Reg -> X86Reg
+
+get_parent_register modes reg | elem CsMode16 modes =
+  case reg of
+    X86RegAl -> X86RegAx
+    X86RegAh -> X86RegAx
+    X86RegBl -> X86RegBx
+    X86RegBh -> X86RegBx
+    X86RegCl -> X86RegCx
+    X86RegCh -> X86RegCx
+    X86RegDl -> X86RegDx
+    X86RegDh -> X86RegDx
+    X86RegDil -> X86RegDi
+    X86RegSil -> X86RegSi
+    X86RegBpl -> X86RegBp
+    X86RegSpl -> X86RegSp
+    --X86RegR8l -> X86RegR8w
+    --X86RegR9l -> X86RegR9w
+    --X86RegR10l -> X86RegR10w
+    --X86RegR11l -> X86RegR11w
+    --X86RegR12l -> X86RegR12w
+    --X86RegR13l -> X86RegR13w
+    --X86RegR14l -> X86RegR14w
+    --X86RegR15l -> X86RegR15w
+    otherwise -> otherwise
+
+get_parent_register modes reg | elem CsMode32 modes =
+  case get_parent_register [CsMode16] reg of
+    X86RegAx -> X86RegEax
+    X86RegBx -> X86RegEbx
+    X86RegCx -> X86RegEcx
+    X86RegDx -> X86RegEdx
+    X86RegBp -> X86RegEbp
+    X86RegSi -> X86RegEsi
+    X86RegDi -> X86RegEdi
+    X86RegSp -> X86RegEsp
+    X86RegR8w -> X86RegR8d
+    X86RegR9w -> X86RegR9d
+    X86RegR10w -> X86RegR10d
+    X86RegR11w -> X86RegR11d
+    X86RegR12w -> X86RegR12d
+    X86RegR13w -> X86RegR13d
+    X86RegR14w -> X86RegR14d
+    X86RegR15w -> X86RegR15d
+    otherwise -> otherwise
+
+get_parent_register modes reg | elem CsMode64 modes =
+  case get_parent_register [CsMode32] reg of
+    X86RegEax -> X86RegRax
+    X86RegEbx -> X86RegRbx
+    X86RegEcx -> X86RegRcx
+    X86RegEdx -> X86RegRdx
+    X86RegEbp -> X86RegRbp
+    X86RegEsi -> X86RegRsi
+    X86RegEdi -> X86RegRdi
+    X86RegEsp -> X86RegRsp
+    X86RegR8d -> X86RegR8
+    X86RegR9d -> X86RegR9
+    X86RegR10d -> X86RegR10
+    X86RegR11d -> X86RegR11
+    X86RegR12d -> X86RegR12
+    X86RegR13d -> X86RegR13
+    X86RegR14d -> X86RegR14
+    X86RegR15d -> X86RegR15
+    otherwise -> otherwise
 
 pop_s :: [CsMode] -> CsInsn -> [AstNode]
 pop_s modes inst =
   --whenever the operation is a store reg or store mem depends on op1
-  let
-    sp = (stack_reg modes)
-    read_exp = Read (BvaddNode (GetReg sp) (BvNode 4 32))
+  let (op1 : _) = x86operands inst
+      sp = get_stack_reg modes
+      arch_size = get_arch_size modes
+      op_size = convert (size op1)
+      sp_base = case (value op1) of
+        (Mem mem_struct) | get_parent_register modes (base mem_struct) == sp -> True
+        _ -> False
+      sp_reg = case (value op1) of
+        (Reg reg) | get_parent_register modes reg == sp -> True
+        _ -> False
   in
-   [
-      SetReg sp (BvaddNode (GetReg sp) (BvNode 4 32)),
-      store_node (get_first_opr_value inst) read_exp
-    ]
+    (includeIf sp_base $ SetReg sp (BvaddNode (GetReg sp) (BvNode op_size (arch_size * 8))))
+    ++ [store_node (value op1) (Read (BvaddNode (GetReg sp) (BvNode op_size (arch_size * 8))))]
+    ++ (includeIf (not (sp_base || sp_reg)) $ SetReg sp (BvaddNode (GetReg sp) (BvNode op_size (arch_size * 8))))
 
 mov ::  CsInsn -> [AstNode]
 mov inst =
@@ -209,25 +288,22 @@ x86operands inst =
         in
           ops
 
-stack_reg :: [CsMode] -> Register
-stack_reg mode =
-  if elem CsMode32 mode then
-    (X86Reg X86RegEsp)
-  else if elem CsMode32 mode then
-    (X86Reg X86RegRsp)
-  else
-    error "Processor modes underspecified."
+get_stack_reg :: [CsMode] -> X86Reg
+get_stack_reg modes =
+  if elem CsMode32 modes then X86RegEsp
+  else if elem CsMode32 modes then X86RegRsp
+  else error "Processor modes underspecified."
 
-arch_size :: [CsMode] -> Word8
-arch_size mode =
-  if elem CsMode32 mode then 4
-  else if elem CsMode32 mode then 8
+get_arch_size :: [CsMode] -> Word8
+get_arch_size modes =
+  if elem CsMode32 modes then 4
+  else if elem CsMode32 modes then 8
   else error "Processor modes underspecified."
 
 --byte size is ignored
 store_node :: CsX86OpValue -> AstNode -> AstNode
 store_node operand store_what =
             case operand of
-              (Reg reg) -> (SetReg (X86Reg reg) store_what)
+              (Reg reg) -> (SetReg reg store_what)
               (Mem mem) -> Store (getLeaAst mem) store_what
               (Imm _) -> AssertNode "store to imm, wtf"
