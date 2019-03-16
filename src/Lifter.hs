@@ -17,6 +17,8 @@ mmp modes a = case toEnum (fromIntegral (insnId a)) of
   X86InsPush -> push_s modes a
   X86InsPop -> pop_s modes a
   X86InsXor -> xor_s a
+  X86InsAnd -> and_s a
+  X86InsOr -> or_s a
   otherwise -> [AssertNode (mnemonic a)]
 
 liftAsm :: [CsMode] -> [CsInsn] -> [[AstNode]]
