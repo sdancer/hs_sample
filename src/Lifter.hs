@@ -9,7 +9,7 @@ import            Util
 import            Data.Word
 
 --x86 vs arm, etc?
-mmp :: [CsMode] -> CsInsn -> [AstNodeType]
+mmp :: [CsMode] -> CsInsn -> [AstNode]
 mmp modes a = case toEnum (fromIntegral (insnId a)) of
   X86InsAdd -> add_s a
   X86InsMov -> mov a
@@ -19,13 +19,13 @@ mmp modes a = case toEnum (fromIntegral (insnId a)) of
   X86InsXor -> xor_s a
   otherwise -> [AssertNode (mnemonic a)]
 
-liftAsm :: [CsMode] -> [CsInsn] -> [[AstNodeType]]
+liftAsm :: [CsMode] -> [CsInsn] -> [[AstNode]]
 liftAsm modes buf = map (mmp modes) buf
 
 disasm_buf :: [CsMode] -> [Word8] -> IO (Either CsErr [CsInsn])
 disasm_buf modes buffer = disasmSimpleIO $ disasm modes buffer 0
 
-liftX86toAst :: [CsMode] -> [Word8] -> IO [[AstNodeType]]
+liftX86toAst :: [CsMode] -> [Word8] -> IO [[AstNode]]
 liftX86toAst modes input = do
     asm <- disasm_buf modes input
     return (case asm of

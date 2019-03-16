@@ -23,11 +23,11 @@ newX86Context =
                   memory = []
                 }
 
-eval :: ExecutionContext -> [AstNodeType] -> ExecutionContext
+eval :: ExecutionContext -> [AstNode] -> ExecutionContext
 eval cin ast =
           cin
 
 -- by default all undefined regs are symbolic?
-symbolicEval :: ExecutionContext -> [AstNodeType] -> ExecutionContext
+symbolicEval :: ExecutionContext -> [AstNode] -> ExecutionContext
 symbolicEval cin ast =
           cin

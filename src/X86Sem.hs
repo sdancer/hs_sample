@@ -9,12 +9,13 @@ import           Hapstone.Internal.X86      as X86
 import           Util
 import           AstContext
 import           Data.Maybe
+import           Data.Word
 
 --ll, ml, hl
 
 -- Make operation to set the zero flag to the value that it would have after some operation
 
-zf_s :: AstNodeType -> CsX86Op -> AstNodeType
+zf_s :: AstNode -> CsX86Op -> AstNode
 zf_s parent dst =
   let bv_size = (size dst) * 8 in
     IteNode
@@ -24,7 +25,7 @@ zf_s parent dst =
 
 -- Make operation to set the overflow flag to the value that it would have after an add operation
 
-of_add_s :: AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+of_add_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> AstNode
 of_add_s parent dst op1ast op2ast =
   let bv_size = (size dst) * 8 in
     ExtractNode (bv_size - 1) (bv_size - 1)
@@ -34,7 +35,7 @@ of_add_s parent dst op1ast op2ast =
 
 -- Make operation to set the carry flag to the value that it would have after an add operation
 
-cf_add_s :: AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+cf_add_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> AstNode
 cf_add_s parent dst op1ast op2ast =
   let bv_size = (size dst) * 8 in
     ExtractNode (bv_size - 1) (bv_size - 1)
@@ -46,7 +47,7 @@ cf_add_s parent dst op1ast op2ast =
 
 -- Make operation to set the adjust flag to the value that it would have after some operation
 
-af_s :: AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+af_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> AstNode
 af_s parent dst op1ast op2ast =
   let bv_size = (size dst) * 8 in
     IteNode
@@ -64,7 +65,7 @@ byte_size_bit = 8
 
 -- Make operation to set the parity flag to the value that it would have after some operation
 
-pf_s :: AstNodeType -> CsX86Op -> AstNodeType
+pf_s :: AstNode -> CsX86Op -> AstNode
 pf_s parent dst =
   let loop counter =
         (if counter == byte_size_bit
@@ -79,14 +80,14 @@ pf_s parent dst =
 
 -- Make operation to set the sign flag to the value that it would have after some operation
 
-sf_s :: AstNodeType -> CsX86Op -> AstNodeType
+sf_s :: AstNode -> CsX86Op -> AstNode
 sf_s parent dst =
   let bv_size = (size dst) * 8 in
     (ExtractNode (bv_size - 1) (bv_size - 1) parent)
 
 -- Make list of operations in the IR that has the same semantics as the X86 add instruction
 
-add_s :: CsInsn -> [AstNodeType]
+add_s :: CsInsn -> [AstNode]
 add_s inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
@@ -104,7 +105,7 @@ add_s inst =
 
 -- Make operation to set the carry flag to the value that it would have after an sub operation
 
-cf_sub_s :: AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+cf_sub_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> AstNode
 cf_sub_s parent dst op1ast op2ast =
   let bv_size = (size dst) * 8 in
     ExtractNode (bv_size - 1) (bv_size - 1)
@@ -116,7 +117,7 @@ cf_sub_s parent dst op1ast op2ast =
 
 -- Make operation to set the overflow flag to the value that it would have after an sub operation
 
-of_sub_s :: AstNodeType -> CsX86Op -> AstNodeType -> AstNodeType -> AstNodeType
+of_sub_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> AstNode
 of_sub_s parent dst op1ast op2ast =
   let bv_size = (size dst) * 8 in
     ExtractNode (bv_size - 1) (bv_size - 1)
@@ -126,7 +127,7 @@ of_sub_s parent dst op1ast op2ast =
 
 -- Make list of operations in the IR that has the same semantics as the X86 sub instruction
 
-sub_s :: CsInsn -> [AstNodeType]
+sub_s :: CsInsn -> [AstNode]
 sub_s inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
@@ -144,7 +145,7 @@ sub_s inst =
 
 -- Make list of operations in the IR that has the same semantics as the X86 xor instruction
 
-xor_s :: CsInsn -> [AstNodeType]
+xor_s :: CsInsn -> [AstNode]
 xor_s inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
@@ -160,17 +161,20 @@ xor_s inst =
       SetFlag Overflow (BvNode 0 1)
     ]
 
-push_s :: [CsMode] -> CsInsn -> [AstNodeType]
+push_s :: [CsMode] -> CsInsn -> [AstNode]
 push_s modes inst =
   let (op1 : _) = x86operands inst
-      op1ast = getOperandAst op1
       sp = (stack_reg modes)
+      op1ast = getOperandAst op1
+      op_size = case (value op1) of
+        (Imm _) -> arch_size modes
+        _ -> size op1
   in [
-      SetReg sp (BvsubNode (GetReg sp) (BvNode 4 32)),
+      SetReg sp (BvsubNode (GetReg sp) (BvNode (fromInteger (toInteger op_size)) ((arch_size modes) * 8))),
       Store (GetReg sp) op1ast
     ]
 
-pop_s :: [CsMode] -> CsInsn -> [AstNodeType]
+pop_s :: [CsMode] -> CsInsn -> [AstNode]
 pop_s modes inst =
   --whenever the operation is a store reg or store mem depends on op1
   let
@@ -182,7 +186,7 @@ pop_s modes inst =
       store_node (get_first_opr_value inst) read_exp
     ]
 
-mov ::  CsInsn -> [AstNodeType]
+mov ::  CsInsn -> [AstNode]
 mov inst =
   let
     (op1 : op2 : _ ) = x86operands inst
@@ -214,8 +218,14 @@ stack_reg mode =
   else
     error "Processor modes underspecified."
 
+arch_size :: [CsMode] -> Word8
+arch_size mode =
+  if elem CsMode32 mode then 4
+  else if elem CsMode32 mode then 8
+  else error "Processor modes underspecified."
+
 --byte size is ignored
-store_node :: CsX86OpValue -> AstNodeType -> AstNodeType
+store_node :: CsX86OpValue -> AstNode -> AstNode
 store_node operand store_what =
             case operand of
               (Reg reg) -> (SetReg (X86Reg reg) store_what)
