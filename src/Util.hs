@@ -63,3 +63,9 @@ contains_group gr insn = case Capstone.detail insn of
   Just d  -> do
     let grw8 = fromIntegral(fromEnum gr) :: Word8
     List.elem grw8 $ groups d
+
+-- Convert instance of integral type to instance of some numerical type
+
+convert :: Integral a => Num b => a -> b
+convert a = (fromInteger (toInteger a))
+

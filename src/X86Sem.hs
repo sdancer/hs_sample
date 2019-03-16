@@ -194,7 +194,7 @@ sf_s parent dst =
 
 -- Make list of operations in the IR that has the same semantics as the X86 add instruction
 
-add_s :: CsInsn -> [AstNode]
+add_s :: CsInsn -> [Stmt]
 add_s inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
@@ -234,7 +234,7 @@ of_sub_s parent dst op1ast op2ast =
 
 -- Make list of operations in the IR that has the same semantics as the X86 sub instruction
 
-sub_s :: CsInsn -> [AstNode]
+sub_s :: CsInsn -> [Stmt]
 sub_s inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
@@ -252,7 +252,7 @@ sub_s inst =
 
 -- Make list of operations in the IR that has the same semantics as the X86 xor instruction
 
-xor_s :: CsInsn -> [AstNode]
+xor_s :: CsInsn -> [Stmt]
 xor_s inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
@@ -270,7 +270,7 @@ xor_s inst =
 
 -- Make list of operations in the IR that has the same semantics as the X86 and instruction
 
-and_s :: CsInsn -> [AstNode]
+and_s :: CsInsn -> [Stmt]
 and_s inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
@@ -288,7 +288,7 @@ and_s inst =
 
 -- Make list of operations in the IR that has the same semantics as the X86 or instruction
 
-or_s :: CsInsn -> [AstNode]
+or_s :: CsInsn -> [Stmt]
 or_s inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
@@ -304,14 +304,9 @@ or_s inst =
       SetFlag Overflow (BvNode 0 1)
     ]
 
--- Convert instance of integral type to instance of some numerical type
-
-convert :: Integral a => Num b => a -> b
-convert a = (fromInteger (toInteger a))
-
 -- Make list of operations in the IR that has the same semantics as the X86 push instruction
 
-push_s :: [CsMode] -> CsInsn -> [AstNode]
+push_s :: [CsMode] -> CsInsn -> [Stmt]
 push_s modes inst =
   let (op1 : _) = x86operands inst
       sp = (get_stack_reg modes)
@@ -333,7 +328,7 @@ includeIf cond sublist = if cond then sublist else []
 
 -- Make list of operations in the IR that has the same semantics as the X86 pop instruction
 
-pop_s :: [CsMode] -> CsInsn -> [AstNode]
+pop_s :: [CsMode] -> CsInsn -> [Stmt]
 pop_s modes inst =
   let (op1 : _) = x86operands inst
       sp = get_stack_reg modes
@@ -356,7 +351,7 @@ pop_s modes inst =
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
 
-mov ::  CsInsn -> [AstNode]
+mov ::  CsInsn -> [Stmt]
 mov inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
@@ -414,10 +409,10 @@ get_arch_size modes =
   else error "Processor modes underspecified."
 
 --byte size is ignored
-store_node :: CsX86OpValue -> AstNode -> AstNode
+store_node :: CsX86OpValue -> AstNode -> Stmt
 store_node operand store_what =
   case operand of
-    (Reg reg) -> (SetReg reg store_what)
+    (Reg reg) -> SetReg reg store_what
     (Mem mem) -> Store (getLeaAst mem) store_what
     _ -> error "Target of store operation is neither a register nor a memory operand."
     
