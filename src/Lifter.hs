@@ -1,29 +1,36 @@
 module Lifter where
 
-import            Ast
-import            X86Sem
-import            Hapstone.Capstone
-import            Hapstone.Internal.Capstone as Capstone
-import            Hapstone.Internal.X86      as X86
-import            Util
-import            Data.Word
+import Ast
+import X86Sem
+import Hapstone.Capstone
+import Hapstone.Internal.Capstone as Capstone
+import Hapstone.Internal.X86      as X86
+import Util
+import Data.Word
 
 --x86 vs arm, etc?
-mmp :: CsInsn -> [AstNodeType]
-mmp a = case (mnemonic a) of
-          "add" -> add_s a
-          "mov" -> mov a
-          otherwise -> [AssertNode otherwise]
+mmp :: [CsMode] -> CsInsn -> [Stmt]
+mmp modes a = case toEnum (fromIntegral (insnId a)) of
+  X86InsAdd -> add_s a
+  X86InsMov -> mov a
+  X86InsSub -> sub_s a
+  X86InsPush -> push_s modes a
+  X86InsPop -> pop_s modes a
+  X86InsXor -> xor_s a
+  X86InsAnd -> and_s a
+  X86InsOr -> or_s a
+  otherwise -> error ("Instruction " ++ mnemonic a ++ " not supported.")
 
-liftAsm :: [CsInsn] -> [[AstNodeType]]
-liftAsm buf = map mmp buf
+liftAsm :: [CsMode] -> [CsInsn] -> [[Stmt]]
+liftAsm modes buf = map (mmp modes) buf
 
-disasm_buf :: [Word8] -> IO (Either CsErr [CsInsn])
-disasm_buf buffer = disasmSimpleIO $ disasm buffer 0
+disasm_buf :: [CsMode] -> [Word8] -> IO (Either CsErr [CsInsn])
+disasm_buf modes buffer = disasmSimpleIO $ disasm modes buffer 0
 
-liftX86toAst :: [Word8] -> IO [[AstNodeType]]
-liftX86toAst input = do
-    asm <- disasm_buf input
+liftX86toAst :: [CsMode] -> [Word8] -> IO [[Stmt]]
+liftX86toAst modes input = do
+    asm <- disasm_buf modes input
     return (case asm of
-      Left _ -> [[(AssertNode "dissasm error")]]
-      Right b -> liftAsm b)
+      Left _ -> error "Error in disassembling machine code."
+      Right b -> liftAsm modes b)
+
