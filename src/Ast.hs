@@ -15,7 +15,31 @@ qqword_size_bit = 256
 dqqword_size_bit = 512
 
 reg_file_bytes :: Num a => a
-reg_file_bytes = 176
+reg_file_bytes = 184
+
+data X86Flag =
+    X86FlagCf | X86FlagPf | X86FlagAf | X86FlagZf | X86FlagSf | X86FlagTf | X86FlagIf
+  | X86FlagDf | X86FlagOf | X86FlagIopl | X86FlagNt | X86FlagRf | X86FlagVm | X86FlagAc
+  | X86FlagVif | X86FlagVip | X86FlagId deriving (Eq, Show)
+
+flagToBit flag = case flag of
+  X86FlagCf -> [0..0]
+  X86FlagPf -> [2..2]
+  X86FlagAf -> [4..4]
+  X86FlagZf -> [6..6]
+  X86FlagSf -> [7..7]
+  X86FlagTf -> [8..8]
+  X86FlagIf -> [9..9]
+  X86FlagDf -> [10..10]
+  X86FlagOf -> [11..11]
+  X86FlagIopl -> [12..13]
+  X86FlagNt -> [14..14]
+  X86FlagRf -> [16..16]
+  X86FlagVm -> [17..17]
+  X86FlagAc -> [18..18]
+  X86FlagVif -> [19..19]
+  X86FlagVip -> [20..20]
+  X86FlagId -> [21..21]
 
 type CompoundReg = [Int]
 
@@ -113,6 +137,10 @@ compoundReg reg = case reg of
   X86RegFs -> [160..167]
   X86RegGs -> [168..175]
 
+-- EFLAGS Register
+
+  X86RegEflags -> [176..183]
+
 -- Given the target processor mode, get the largest register containing this register
 
 isSubregisterOf :: CompoundReg -> CompoundReg -> Bool
@@ -131,15 +159,6 @@ is_control_reg reg = elem reg
   [X86RegCr0, X86RegCr1, X86RegCr2, X86RegCr3, X86RegCr4, X86RegCr5, X86RegCr6,
   X86RegCr7, X86RegCr8, X86RegCr9, X86RegCr10, X86RegCr11, X86RegCr12, X86RegCr13,
   X86RegCr14, X86RegCr15]
-
-data Flags = Zero
-            | Overflow
-            | Carry
-            | Parity
-            | Adjust
-            | Sign
-            | Direction
-              deriving (Eq, Show)
 
 data AstNode =
     BvaddNode AstNode AstNode
@@ -179,6 +198,7 @@ data AstNode =
   | DistinctNode AstNode AstNode
   | EqualNode AstNode AstNode
   | ExtractNode Word8 Word8 AstNode -- ! `((_ extract <high> <low>) <expr>)` node
+  | ReplaceNode Word8 Word8 AstNode AstNode
   | IffNode AstNode AstNode -- ! `(iff <expr1> <expr2>)`
   | IteNode AstNode AstNode AstNode -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
   | LandNode AstNode AstNode
@@ -193,12 +213,10 @@ data AstNode =
   | UndefinedNode -- The undefined value
   | Read AstNode
   | GetReg CompoundReg
-  | GetFlag Flags
   deriving (Eq, Show)
 
 data Stmt =
     Store AstNode AstNode
   | SetReg CompoundReg AstNode
-  | SetFlag Flags AstNode
   deriving (Eq, Show)
 

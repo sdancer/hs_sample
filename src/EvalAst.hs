@@ -16,6 +16,14 @@ x86Context = ExecutionContext {
   memory = []
 }
 
+-- Evaluates to a bit vector with all 1s up to bit high
+
+oneBitsUpto high = (shift 1 (high + 1)) - 1
+
+-- Evaluates to a bit vector with all 1s between bit low and bit high
+
+oneBitsBetween high low = oneBitsUpto high - (oneBitsUpto (low - 1))
+
 -- Evaluates the given node in the given context and returns the result
 
 eval :: ExecutionContext -> AstNode -> Int
@@ -31,6 +39,14 @@ eval cin (BvorNode a b) = convert ((eval cin a) .|. (eval cin b))
 eval cin (BvaddNode a b) = convert ((eval cin a) + (eval cin b))
 
 eval cin (BvsubNode a b) = convert ((eval cin a) - (eval cin b))
+
+eval cin (IteNode a b c) =
+  if (eval cin a) /= 0 then eval cin b
+  else eval cin c
+
+eval cin (ReplaceNode a b c d) =
+  ((eval cin c) .&. (complement (oneBitsBetween (convert a) (convert b))))
+    .|. convert (shift (eval cin d) (convert b))
 
 eval cin (ExtractNode a b c) =
   convert ((shift (eval cin c) (convert (-b))) .&. ((2 ^ convert (a + 1 - b)) - 1))
