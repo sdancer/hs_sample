@@ -3,6 +3,7 @@ module Main where
 import qualified Data.ByteString            as BS
 import           System.IO
 import           Hapstone.Internal.Capstone as Capstone
+import EvalAst
 
 import Lifter
 --import Simplify
@@ -11,12 +12,12 @@ main :: IO ()
 main = do
   -- contents <- BS.readFile "bs/blackcipher.aes"
   print "this should be in test/"
-  let input = [0x83, 0xE8, 0x05]
+  let input = [0xb8, 0x05, 0x00, 0x00, 0x00, 0x89, 0xc1]
   let modes = [Capstone.CsMode32]
   asm <- disasm_buf modes input
   case asm of
     Left _ -> print "error"
-    Right b -> print (liftAsm modes b)
+    Right b -> print (run x86Context (concat (liftAsm modes b)))
   -- let simplification = Simplify { buffer = first_pass }
 
   -- state <- lift_next_block $ new_state contents
