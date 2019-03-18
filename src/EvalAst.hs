@@ -36,6 +36,8 @@ eval cin (BvandNode a b) = convert ((eval cin a) .&. (eval cin b))
 
 eval cin (BvorNode a b) = convert ((eval cin a) .|. (eval cin b))
 
+eval cin (EqualNode a b) = if (eval cin a) == (eval cin b) then 1 else 0
+
 eval cin (BvaddNode a b) = convert ((eval cin a) + (eval cin b))
 
 eval cin (BvsubNode a b) = convert ((eval cin a) - (eval cin b))

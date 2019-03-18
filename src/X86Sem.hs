@@ -307,6 +307,7 @@ store_node operand store_what =
     _ -> error "Target of store operation is neither a register nor a memory operand."
 
 set_flag flag expr =
-  let compReg = (compoundReg X86RegEflags) in
-    SetReg compReg (ReplaceNode 0 10 (GetReg compReg) expr)
+  let compReg = compoundReg X86RegEflags
+      (low, high) = flagToBit flag
+    in SetReg compReg (ReplaceNode (convert high) (convert low) (GetReg compReg) expr)
     
