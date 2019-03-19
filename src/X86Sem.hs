@@ -91,7 +91,7 @@ add_s inst =
       op2ast = getOperandAst op2
       add_node = (BvaddNode op1ast op2ast)
   in [
-      store_node (value op1) add_node,
+      store_node op1 add_node,
       af_s add_node op1 op1ast op1ast,
       pf_s add_node op1,
       sf_s add_node op1,
@@ -131,7 +131,7 @@ sub_s inst =
       op2ast = getOperandAst op2
       sub_node = (BvsubNode op1ast op2ast)
   in [
-      store_node (value op1) sub_node,
+      store_node op1 sub_node,
       af_s sub_node op1 op1ast op1ast,
       pf_s sub_node op1,
       sf_s sub_node op1,
@@ -149,7 +149,7 @@ xor_s inst =
       src_ast = getOperandAst src_op
       xor_node = (BvxorNode dst_ast src_ast)
   in [
-      store_node (value dst_op) xor_node,
+      store_node dst_op xor_node,
       set_flag X86FlagAf UndefinedNode,
       pf_s xor_node dst_op,
       sf_s xor_node dst_op,
@@ -167,7 +167,7 @@ and_s inst =
       src_ast = getOperandAst src_op
       and_node = (BvandNode dst_ast src_ast)
   in [
-      store_node (value dst_op) and_node,
+      store_node dst_op and_node,
       set_flag X86FlagAf UndefinedNode,
       pf_s and_node dst_op,
       sf_s and_node dst_op,
@@ -185,7 +185,7 @@ or_s inst =
       src_ast = getOperandAst src_op
       and_node = (BvorNode dst_ast src_ast)
   in [
-      store_node (value dst_op) and_node,
+      store_node dst_op and_node,
       set_flag X86FlagAf UndefinedNode,
       pf_s and_node dst_op,
       sf_s and_node dst_op,
@@ -207,7 +207,7 @@ push_s modes inst =
         _ -> size op1
   in [
       SetReg sp (BvsubNode (GetReg sp) (BvNode (convert op_size) (arch_size * 8))),
-      Store (GetReg sp) (ZxNode (convert ((op_size - (size op1)) * 8)) (getOperandAst op1))
+      Store op_size (GetReg sp) (ZxNode (convert ((op_size - (size op1)) * 8)) (getOperandAst op1))
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
@@ -232,12 +232,12 @@ pop_s modes inst =
       sp_reg = case (value op1) of
         (Reg reg) -> isSubregisterOf (compoundReg reg) sp
         _ -> False
-      -- The new value of the stack pointer
-      new_sp_val = BvaddNode (GetReg sp) (BvNode op_size (arch_size * 8))
+      -- An expression of the amount the stack pointer will be increased by
+      delta_val = (BvNode (convert op_size) (arch_size * 8))
   in
-    (includeIf sp_base [SetReg sp new_sp_val])
-    ++ [store_node (value op1) (Read new_sp_val)]
-    ++ (includeIf (not (sp_base || sp_reg)) [SetReg sp new_sp_val])
+    (includeIf sp_base [SetReg sp (BvaddNode (GetReg sp) delta_val)])
+    ++ [store_node op1 (Read op_size (if sp_base then (BvsubNode (GetReg sp) delta_val) else (GetReg sp)))]
+    ++ (includeIf (not (sp_base || sp_reg)) [SetReg sp (BvaddNode (GetReg sp) delta_val)])
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
 
@@ -262,7 +262,7 @@ mov inst =
           (Reg reg) | is_control_reg reg -> True
           _ -> False
   in
-    [store_node (value dst_op) node]
+    [store_node dst_op node]
     ++ includeIf undef
         [set_flag X86FlagAf UndefinedNode,
         set_flag X86FlagPf UndefinedNode,
@@ -280,11 +280,9 @@ getCsX86arch inst =
 
 x86operands :: CsInsn -> [CsX86Op]
 x86operands inst =
-        let
-              arch2 = getCsX86arch (Capstone.detail inst)
-              ops = maybe [] operands arch2
-        in
-          ops
+  let arch2 = getCsX86arch (Capstone.detail inst)
+      ops = maybe [] operands arch2
+  in ops
 
 get_stack_reg :: [CsMode] -> CompoundReg
 get_stack_reg modes =
@@ -298,12 +296,11 @@ get_arch_size modes =
   else if elem CsMode32 modes then 8
   else error "Processor modes underspecified."
 
---byte size is ignored
-store_node :: CsX86OpValue -> AstNode -> Stmt
+store_node :: CsX86Op -> AstNode -> Stmt
 store_node operand store_what =
-  case operand of
+  case (value operand) of
     (Reg reg) -> SetReg (compoundReg reg) store_what
-    (Mem mem) -> Store (getLeaAst mem) store_what
+    (Mem mem) -> Store (size operand) (getLeaAst mem) store_what
     _ -> error "Target of store operation is neither a register nor a memory operand."
 
 set_flag flag expr =

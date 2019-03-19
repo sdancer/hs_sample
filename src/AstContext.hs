@@ -11,7 +11,7 @@ getOperandAst :: CsX86Op -> AstNode
 getOperandAst op = case value op of
   (Imm value) -> BvNode value ((size op) * 8)
   (Reg reg) -> GetReg (compoundReg reg)
-  (Mem mem) -> Read (getLeaAst mem)
+  (Mem mem) -> Read (size op) (getLeaAst mem)
 
 
 getLeaAst :: X86OpMemStruct -> AstNode

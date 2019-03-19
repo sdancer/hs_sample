@@ -43,7 +43,11 @@ flagToBit flag = case flag of
   X86FlagVip -> (20,20)
   X86FlagId -> (21,21)
 
+-- A representation of a register as a list of indicies. Enables overlapping registers.
+
 type CompoundReg = [Int]
+
+-- A map from X86Regs to locations in the register file
 
 x86RegisterMap :: [(X86.X86Reg, CompoundReg)]
 
@@ -87,13 +91,40 @@ x86RegisterMap = [
 
   (X86RegEflags, [176..183])]
 
+-- Convert an X86Reg to a CompoundReg
+
 compoundReg :: X86.X86Reg -> CompoundReg
 
 compoundReg reg = case lookup reg x86RegisterMap of
   Nothing -> error "X86 register could not be found in map."
   Just x -> x
 
--- Given the target processor mode, get the largest register containing this register
+-- Gets the value of the specified compound register from the register file
+
+getRegisterValue :: [Int] -> CompoundReg -> Int
+
+getRegisterValue regFile [] = 0
+
+getRegisterValue regFile (b:bs) =
+  (regFile !! b) + (2 ^ word_size_bit) * (getRegisterValue regFile bs)
+
+-- Gets the specified bytes from memory
+
+getMemoryValue :: [(Int, Int)] -> [Int] -> Int
+
+getMemoryValue _ [] = 0
+
+getMemoryValue mem (b:bs) =
+  case lookup b mem of
+    Nothing -> error "Read attempted on uninitialized memory."
+    Just x -> x + (2 ^ word_size_bit) * (getMemoryValue mem bs)
+
+-- Get the register values from the register file
+
+getRegisterValues regFile =
+  map (\(x, y) -> (x, getRegisterValue regFile y)) x86RegisterMap
+
+-- Checks if a register is a subregister of another register
 
 isSubregisterOf :: CompoundReg -> CompoundReg -> Bool
 
@@ -102,11 +133,13 @@ isSubregisterOf child parent = isSubsequenceOf child parent
 -- Checks if the given register is a segment register
 
 is_segment_reg :: X86.X86Reg -> Bool
+
 is_segment_reg reg = elem reg [X86RegCs, X86RegDs, X86RegSs, X86RegEs, X86RegFs, X86RegGs]
 
 -- Checks if the given register is a control register
 
 is_control_reg :: X86.X86Reg -> Bool
+
 is_control_reg reg = elem reg
   [X86RegCr0, X86RegCr1, X86RegCr2, X86RegCr3, X86RegCr4, X86RegCr5, X86RegCr6,
   X86RegCr7, X86RegCr8, X86RegCr9, X86RegCr10, X86RegCr11, X86RegCr12, X86RegCr13,
@@ -163,12 +196,12 @@ data AstNode =
   | VariableNode
   | ZxNode Int AstNode
   | UndefinedNode -- The undefined value
-  | Read AstNode
+  | Read Word8 AstNode
   | GetReg CompoundReg
   deriving (Eq, Show)
 
 data Stmt =
-    Store AstNode AstNode
+    Store Word8 AstNode AstNode
   | SetReg CompoundReg AstNode
   deriving (Eq, Show)
 
