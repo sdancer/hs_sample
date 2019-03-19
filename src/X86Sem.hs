@@ -241,8 +241,8 @@ pop_s modes inst =
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
 
-mov ::  CsInsn -> [Stmt]
-mov inst =
+mov_s ::  CsInsn -> [Stmt]
+mov_s inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
       src_ast = getOperandAst src_op
@@ -270,6 +270,13 @@ mov inst =
         set_flag X86FlagZf UndefinedNode,
         set_flag X86FlagCf UndefinedNode,
         set_flag X86FlagOf UndefinedNode]
+
+jmp_s :: CsInsn -> [Stmt]
+jmp_s inst =
+  let (src_op : _ ) = x86operands inst
+  in case value src_op of
+    Imm rel -> [JccNode (BvNode 1 1) (convert (address inst + convert (length (bytes inst)) + rel))]
+    _ -> error "Absolute jumps not yet implemented."
 
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86
 getCsX86arch inst =

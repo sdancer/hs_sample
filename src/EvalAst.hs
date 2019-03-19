@@ -4,16 +4,28 @@ import Ast
 import Hapstone.Internal.X86 as X86
 import Util
 import Data.Bits
+import Debug.Trace
+
+-- Represents the state of a processor: register file contents, memory contents, the
+-- instructions being executed, and the instruction pointer contents.
 
 data ExecutionContext = ExecutionContext {
   reg_file :: [Int],
-  memory :: [(Int, Int)]
-} deriving (Eq, Show, Read)
+  memory :: [(Int, Int)],
+  stmts :: [(Label,Stmt)],
+  insn_ptr :: Ast.Label
+} deriving (Eq, Show)
 
-x86Context :: ExecutionContext
-x86Context = ExecutionContext {
+-- Creates a context where the instruction pointer points to an instruction, and memory
+-- and the register file are uninitialized.
+
+uninitializedX86Context :: [(Label,Stmt)] -> Label -> ExecutionContext
+
+uninitializedX86Context stmts insn_ptr = ExecutionContext {
+  memory = [],
   reg_file = replicate reg_file_bytes 0,
-  memory = []
+  stmts = stmts,
+  insn_ptr = insn_ptr
 }
 
 -- Evaluates to a bit vector with all 1s up to bit high
@@ -83,37 +95,59 @@ assign ((c, d) : es) (a, b) | c == a = (a, b) : es
 
 assign ((c, d) : es) (a, b) | c /= a = (c, d) : assign es (a, b)
 
--- Executes the given statement in the given context and returns a new context
+-- Gets the successor of the given element in the given list.
 
-exec :: ExecutionContext -> Stmt -> ExecutionContext
+after :: Eq a => [a] -> a -> a
+
+after (x:y:ys) z | x == z = y
+
+after (x:xs) y = after xs y
+
+exec_aux :: ExecutionContext -> Stmt -> ExecutionContext
 
 -- Executes a SetReg operation by setting each byte of the register separately
 
-exec cin (SetReg bs a) =
-  let update_reg_file regs [] _ = regs
+exec_aux cin (SetReg bs a) =
+  let (insn_ptrs, _) = unzip (stmts cin)
+      update_reg_file regs [] _ = regs
       update_reg_file regs (c:cs) val =
         update_reg_file (replace regs c (val .&. ((2 ^ byte_size_bit) - 1))) cs (shift val (-byte_size_bit))
   in ExecutionContext {
     reg_file = update_reg_file (reg_file cin) bs (eval cin a),
-    memory = memory cin
+    memory = memory cin,
+    stmts = stmts cin,
+    insn_ptr = after insn_ptrs (insn_ptr cin)
   }
 
 -- Executes a Store operation by setting each byte of memory separately
 
-exec cin (Store n dst val) =
-  let updateMemory mem 0 _ _ = mem
+exec_aux cin (Store n dst val) =
+  let (insn_ptrs, _) = unzip (stmts cin)
+      updateMemory mem 0 _ _ = mem
       updateMemory mem c d v =
         updateMemory (assign mem (d, (v .&. ((2 ^ byte_size_bit) - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
   in ExecutionContext {
     reg_file = reg_file cin,
-    memory = updateMemory (memory cin) n (eval cin dst) (eval cin val)
+    memory = updateMemory (memory cin) n (eval cin dst) (eval cin val),
+    stmts = stmts cin,
+    insn_ptr = after insn_ptrs (insn_ptr cin)
   }
 
--- Executes given list of statements in order in the given context and returns a new context
+-- Executes the statement pointed to by the instruction pointer and returns the new context
 
-run :: ExecutionContext -> [Stmt] -> ExecutionContext
+exec :: ExecutionContext -> ExecutionContext
 
-run cin ss = foldl exec cin ss
+exec cin = case lookup (insn_ptr cin) (stmts cin) of
+  Nothing -> error "Instruction pointer has invalid value."
+  Just x -> exec_aux cin x
+
+-- Applies the given function on the given argument a given number of times
+
+iter :: (a -> a) -> Int -> a -> a
+
+iter fun 0 x = x
+
+iter fun n x = iter fun (n - 1) (fun x)
 
 -- by default all undefined regs are symbolic?
 symbolicEval :: ExecutionContext -> [AstNode] -> ExecutionContext

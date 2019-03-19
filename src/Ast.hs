@@ -43,6 +43,8 @@ flagToBit flag = case flag of
   X86FlagVip -> (20,20)
   X86FlagId -> (21,21)
 
+type Label = (Word64, Int)
+
 -- A representation of a register as a list of indicies. Enables overlapping registers.
 
 type CompoundReg = [Int]
@@ -202,6 +204,7 @@ data AstNode =
 
 data Stmt =
     Store Word8 AstNode AstNode
+  | JccNode AstNode Int
   | SetReg CompoundReg AstNode
   deriving (Eq, Show)
 
