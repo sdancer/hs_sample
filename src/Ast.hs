@@ -204,7 +204,7 @@ data AstNode =
 
 data Stmt =
     Store Word8 AstNode AstNode
-  | JccNode AstNode Int
+  | Branch AstNode AstNode
   | SetReg CompoundReg AstNode
   deriving (Eq, Show)
 

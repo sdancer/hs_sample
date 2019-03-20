@@ -133,6 +133,15 @@ exec_aux cin (Store n dst val) =
     insn_ptr = after insn_ptrs (insn_ptr cin)
   }
 
+-- Executes a Branch operation by changing the instruction pointer
+
+exec_aux cin (Branch cond lbl) = ExecutionContext {
+    reg_file = reg_file cin,
+    memory = memory cin,
+    stmts = stmts cin,
+    insn_ptr = (convert (eval cin lbl), 0)
+  }
+
 -- Executes the statement pointed to by the instruction pointer and returns the new context
 
 exec :: ExecutionContext -> ExecutionContext

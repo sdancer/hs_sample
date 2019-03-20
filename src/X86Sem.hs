@@ -274,9 +274,8 @@ mov_s inst =
 jmp_s :: CsInsn -> [Stmt]
 jmp_s inst =
   let (src_op : _ ) = x86operands inst
-  in case value src_op of
-    Imm rel -> [JccNode (BvNode 1 1) (convert (address inst + convert (length (bytes inst)) + rel))]
-    _ -> error "Absolute jumps not yet implemented."
+      src_ast = getOperandAst src_op
+  in [Branch (BvNode 1 1) src_ast]
 
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86
 getCsX86arch inst =
