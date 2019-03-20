@@ -40,42 +40,40 @@ oneBitsBetween high low = oneBitsUpto high - (oneBitsUpto (low - 1))
 
 eval :: ExecutionContext -> AstNode -> Int
 
-eval cin (BvNode a _) = convert a
+eval cin (BvNode a _) = a
 
-eval cin (BvxorNode a b) = convert (xor (eval cin a) (eval cin b))
+eval cin (BvxorNode a b) = xor (eval cin a) (eval cin b)
 
-eval cin (BvandNode a b) = convert ((eval cin a) .&. (eval cin b))
+eval cin (BvandNode a b) = (eval cin a) .&. (eval cin b)
 
-eval cin (BvorNode a b) = convert ((eval cin a) .|. (eval cin b))
+eval cin (BvorNode a b) = (eval cin a) .|. (eval cin b)
 
-eval cin (BvnotNode a) = convert (complement (eval cin a))
+eval cin (BvnotNode a) = complement (eval cin a)
 
 eval cin (EqualNode a b) = if (eval cin a) == (eval cin b) then 1 else 0
 
-eval cin (BvaddNode a b) = convert ((eval cin a) + (eval cin b))
+eval cin (BvaddNode a b) = (eval cin a) + (eval cin b)
 
-eval cin (BvsubNode a b) = convert ((eval cin a) - (eval cin b))
+eval cin (BvsubNode a b) = (eval cin a) - (eval cin b)
 
 eval cin (BvlshrNode a b) = convert (shift ((convert (eval cin a)) :: Word) (-(eval cin b)))
 
-eval cin (ZxNode a b) = convert (eval cin b)
+eval cin (ZxNode a b) = eval cin b
 
 eval cin (IteNode a b c) =
   if (eval cin a) /= 0 then eval cin b
   else eval cin c
 
 eval cin (ReplaceNode a b c d) =
-  ((eval cin c) .&. (complement (oneBitsBetween (convert a) (convert b))))
-    .|. convert (shift (eval cin d) (convert b))
+  ((eval cin c) .&. (complement (oneBitsBetween a b))) .|. shift (eval cin d) b
 
-eval cin (ExtractNode a b c) =
-  convert ((shift (eval cin c) (convert (-b))) .&. ((2 ^ convert (a + 1 - b)) - 1))
+eval cin (ExtractNode a b c) = (shift (eval cin c) (-b)) .&. ((2 ^ (a + 1 - b)) - 1)
 
 eval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 
 eval cin (Read a b) =
   let memStart = eval cin b
-    in getMemoryValue (memory cin) [memStart..(memStart + (convert a) -1)]
+    in getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
 
 -- Replace the given index of the given list with the given value
 
@@ -139,7 +137,7 @@ exec_aux cin (Branch cond lbl) = ExecutionContext {
     reg_file = reg_file cin,
     memory = memory cin,
     stmts = stmts cin,
-    insn_ptr = if eval cin cond /= 0 then (convert (eval cin lbl), 0) else insn_ptr cin
+    insn_ptr = if eval cin cond /= 0 then (eval cin lbl, 0) else insn_ptr cin
   }
 
 -- Executes the statement pointed to by the instruction pointer and returns the new context

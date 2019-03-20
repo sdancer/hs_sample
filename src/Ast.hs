@@ -43,7 +43,7 @@ flagToBit flag = case flag of
   X86FlagVip -> (20,20)
   X86FlagId -> (21,21)
 
-type Label = (Word64, Int)
+type Label = (Int, Int)
 
 -- A representation of a register as a list of indicies. Enables overlapping registers.
 
@@ -177,15 +177,15 @@ data AstNode =
   | BvuremNode AstNode AstNode
   | BvxnorNode AstNode AstNode
   | BvxorNode AstNode AstNode
-  | BvNode Word64 Word8
+  | BvNode Int Int
   | CompoundNode -- ! `[<expr1> <expr2> <expr3> ...]` node
   | ConcatNode [AstNode]
   | DecimalNode Int --float?
   | DeclareNode --wtf?
   | DistinctNode AstNode AstNode
   | EqualNode AstNode AstNode
-  | ExtractNode Word8 Word8 AstNode -- ! `((_ extract <high> <low>) <expr>)` node
-  | ReplaceNode Word8 Word8 AstNode AstNode
+  | ExtractNode Int Int AstNode -- ! `((_ extract <high> <low>) <expr>)` node
+  | ReplaceNode Int Int AstNode AstNode
   | IffNode AstNode AstNode -- ! `(iff <expr1> <expr2>)`
   | IteNode AstNode AstNode AstNode -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
   | LandNode AstNode AstNode
@@ -198,12 +198,12 @@ data AstNode =
   | VariableNode
   | ZxNode Int AstNode
   | UndefinedNode -- The undefined value
-  | Read Word8 AstNode
+  | Read Int AstNode
   | GetReg CompoundReg
   deriving (Eq, Show)
 
 data Stmt =
-    Store Word8 AstNode AstNode
+    Store Int AstNode AstNode
   | Branch AstNode AstNode
   | SetReg CompoundReg AstNode
   deriving (Eq, Show)

@@ -16,7 +16,7 @@ import Data.Word
 
 zf_s :: AstNode -> CsX86Op -> Stmt
 zf_s parent dst =
-  let bv_size = (size dst) * 8 in
+  let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagZf (IteNode
       (EqualNode (ExtractNode (bv_size - 1) 0 parent) (BvNode 0 bv_size))
       (BvNode 1 1)
@@ -26,7 +26,7 @@ zf_s parent dst =
 
 of_add_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> Stmt
 of_add_s parent dst op1ast op2ast =
-  let bv_size = (size dst) * 8 in
+  let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagOf (ExtractNode (bv_size - 1) (bv_size - 1)
       (BvandNode
         (BvxorNode op1ast (BvnotNode op2ast))
@@ -36,7 +36,7 @@ of_add_s parent dst op1ast op2ast =
 
 cf_add_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> Stmt
 cf_add_s parent dst op1ast op2ast =
-  let bv_size = (size dst) * 8 in
+  let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagCf (ExtractNode (bv_size - 1) (bv_size - 1)
       (BvxorNode (BvandNode op1ast op2ast)
         (BvandNode (BvxorNode
@@ -48,7 +48,7 @@ cf_add_s parent dst op1ast op2ast =
 
 af_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> Stmt
 af_s parent dst op1ast op2ast =
-  let bv_size = (size dst) * 8 in
+  let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagAf (IteNode
       (EqualNode
         (BvNode 0x10 bv_size)
@@ -79,7 +79,7 @@ pf_s parent dst =
 
 sf_s :: AstNode -> CsX86Op -> Stmt
 sf_s parent dst =
-  let bv_size = (size dst) * 8 in
+  let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagSf (ExtractNode (bv_size - 1) (bv_size - 1) parent)
 
 -- Make list of operations in the IR that has the same semantics as the X86 add instruction
@@ -104,7 +104,7 @@ add_s inst =
 
 cf_sub_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> Stmt
 cf_sub_s parent dst op1ast op2ast =
-  let bv_size = (size dst) * 8 in
+  let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagCf (ExtractNode (bv_size - 1) (bv_size - 1)
       (BvxorNode
         (BvxorNode op1ast (BvxorNode op2ast (ExtractNode (bv_size - 1) 0 parent)))
@@ -116,7 +116,7 @@ cf_sub_s parent dst op1ast op2ast =
 
 of_sub_s :: AstNode -> CsX86Op -> AstNode -> AstNode -> Stmt
 of_sub_s parent dst op1ast op2ast =
-  let bv_size = (size dst) * 8 in
+  let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagOf (ExtractNode (bv_size - 1) (bv_size - 1)
       (BvandNode
         (BvxorNode op1ast op2ast)
@@ -204,10 +204,10 @@ push_s modes inst =
       -- If it's an immediate source, the memory access is always based on the arch size
       op_size = case (value op1) of
         (Imm _) -> arch_size
-        _ -> size op1
+        _ -> convert $ size op1
   in [
-      SetReg sp (BvsubNode (GetReg sp) (BvNode (convert op_size) (arch_size * 8))),
-      Store op_size (GetReg sp) (ZxNode (convert ((op_size - (size op1)) * 8)) (getOperandAst op1))
+      SetReg sp (BvsubNode (GetReg sp) (BvNode op_size (arch_size * 8))),
+      Store op_size (GetReg sp) (ZxNode ((op_size - (convert $ size op1)) * 8) (getOperandAst op1))
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
@@ -223,7 +223,7 @@ pop_s modes inst =
   let (op1 : _) = x86operands inst
       sp = get_stack_reg modes
       arch_size = get_arch_size modes
-      op_size = convert (size op1)
+      op_size = convert $ size op1
       -- Is the ESP register is used as a base register for addressing a destination operand in memory?
       sp_base = case (value op1) of
         (Mem mem_struct) -> isSubregisterOf (compoundReg (base mem_struct)) sp
@@ -233,7 +233,7 @@ pop_s modes inst =
         (Reg reg) -> isSubregisterOf (compoundReg reg) sp
         _ -> False
       -- An expression of the amount the stack pointer will be increased by
-      delta_val = (BvNode (convert op_size) (arch_size * 8))
+      delta_val = (BvNode op_size (arch_size * 8))
   in
     (includeIf sp_base [SetReg sp (BvaddNode (GetReg sp) delta_val)])
     ++ [store_node op1 (Read op_size (if sp_base then (BvsubNode (GetReg sp) delta_val) else (GetReg sp)))]
@@ -246,7 +246,7 @@ mov_s inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
       src_ast = getOperandAst src_op
-      dst_size_bit = (size dst_op) * 8
+      dst_size_bit = (convert $ size dst_op) * 8
       -- Segment registers are defined as 32 or 64 bit vectors in order to
       -- avoid having to simulate the GDT. This definition allows users to
       -- directly define their segments offset.
@@ -298,7 +298,7 @@ get_stack_reg modes =
   else if elem CsMode32 modes then compoundReg X86RegRsp
   else error "Processor modes underspecified."
 
-get_arch_size :: [CsMode] -> Word8
+get_arch_size :: [CsMode] -> Int
 get_arch_size modes =
   if elem CsMode32 modes then 4
   else if elem CsMode32 modes then 8
@@ -308,11 +308,11 @@ store_node :: CsX86Op -> AstNode -> Stmt
 store_node operand store_what =
   case (value operand) of
     (Reg reg) -> SetReg (compoundReg reg) store_what
-    (Mem mem) -> Store (size operand) (getLeaAst mem) store_what
+    (Mem mem) -> Store (convert $ size operand) (getLeaAst mem) store_what
     _ -> error "Target of store operation is neither a register nor a memory operand."
 
 set_flag flag expr =
   let compReg = compoundReg X86RegEflags
       (low, high) = flagToBit flag
-    in SetReg compReg (ReplaceNode (convert high) (convert low) (GetReg compReg) expr)
+    in SetReg compReg (ReplaceNode high low (GetReg compReg) expr)
     

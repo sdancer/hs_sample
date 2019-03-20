@@ -10,7 +10,7 @@ import Data.Word
 
 labelStmts :: CsInsn -> [Stmt] -> [(Label, Stmt)]
 labelStmts insn stmts =
-  let addr = address insn
+  let addr = convert $ address insn
     in zip (zip [addr,addr..] [0,1..]) stmts
 
 --x86 vs arm, etc?
