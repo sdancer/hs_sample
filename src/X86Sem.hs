@@ -271,6 +271,8 @@ mov_s inst =
         set_flag X86FlagCf UndefinedNode,
         set_flag X86FlagOf UndefinedNode]
 
+-- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
+
 jmp_s :: CsInsn -> [Stmt]
 jmp_s inst =
   let (src_op : _ ) = x86operands inst

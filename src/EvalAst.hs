@@ -139,7 +139,7 @@ exec_aux cin (Branch cond lbl) = ExecutionContext {
     reg_file = reg_file cin,
     memory = memory cin,
     stmts = stmts cin,
-    insn_ptr = (convert (eval cin lbl), 0)
+    insn_ptr = if eval cin cond /= 0 then (convert (eval cin lbl), 0) else insn_ptr cin
   }
 
 -- Executes the statement pointed to by the instruction pointer and returns the new context
