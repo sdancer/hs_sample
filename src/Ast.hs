@@ -147,64 +147,64 @@ is_control_reg reg = elem reg
   X86RegCr7, X86RegCr8, X86RegCr9, X86RegCr10, X86RegCr11, X86RegCr12, X86RegCr13,
   X86RegCr14, X86RegCr15]
 
-data AstNode =
-    BvaddNode AstNode AstNode
-  | BvandNode AstNode AstNode
-  | BvashrNode AstNode AstNode
-  | BvlshrNode AstNode AstNode
-  | BvmulNode AstNode AstNode
-  | BvnandNode AstNode AstNode
-  | BvnegNode AstNode
-  | BvnorNode AstNode AstNode
-  | BvnotNode AstNode
-  | BvorNode AstNode AstNode
-  | BvrolNode AstNode AstNode
-  | BvrorNode AstNode AstNode -- can lit
-  | BvsdivNode AstNode AstNode
-  | BvsgeNode AstNode AstNode
-  | BvsgtNode AstNode AstNode
-  | BvshlNode AstNode AstNode
-  | BvsleNode AstNode AstNode
-  | BvsltNode AstNode AstNode
-  | BvsmodNode AstNode AstNode
-  | BvsremNode AstNode AstNode
-  | BvsubNode AstNode AstNode
-  | BvudivNode AstNode AstNode
-  | BvugeNode AstNode AstNode
-  | BvugtNode AstNode AstNode
-  | BvuleNode AstNode AstNode
-  | BvultNode AstNode AstNode
-  | BvuremNode AstNode AstNode
-  | BvxnorNode AstNode AstNode
-  | BvxorNode AstNode AstNode
-  | BvNode Int Int
-  | CompoundNode -- ! `[<expr1> <expr2> <expr3> ...]` node
-  | ConcatNode [AstNode]
-  | DecimalNode Int --float?
-  | DeclareNode --wtf?
-  | DistinctNode AstNode AstNode
-  | EqualNode AstNode AstNode
-  | ExtractNode Int Int AstNode -- ! `((_ extract <high> <low>) <expr>)` node
-  | ReplaceNode Int Int AstNode AstNode
-  | IffNode AstNode AstNode -- ! `(iff <expr1> <expr2>)`
-  | IteNode AstNode AstNode AstNode -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
-  | LandNode AstNode AstNode
-  | LetNode String AstNode AstNode
-  | LnotNode AstNode
-  | LorNode AstNode AstNode
-  | ReferenceNode --fix
-  | StringNode String
-  | SxNode Int AstNode
-  | VariableNode
-  | ZxNode Int AstNode
-  | UndefinedNode -- The undefined value
-  | Read Int AstNode
+data Expr =
+    BvaddExpr Expr Expr
+  | BvandExpr Expr Expr
+  | BvashrExpr Expr Expr
+  | BvlshrExpr Expr Expr
+  | BvmulExpr Expr Expr
+  | BvnandExpr Expr Expr
+  | BvnegExpr Expr
+  | BvnorExpr Expr Expr
+  | BvnotExpr Expr
+  | BvorExpr Expr Expr
+  | BvrolExpr Expr Expr
+  | BvrorExpr Expr Expr -- can lit
+  | BvsdivExpr Expr Expr
+  | BvsgeExpr Expr Expr
+  | BvsgtExpr Expr Expr
+  | BvshlExpr Expr Expr
+  | BvsleExpr Expr Expr
+  | BvsltExpr Expr Expr
+  | BvsmodExpr Expr Expr
+  | BvsremExpr Expr Expr
+  | BvsubExpr Expr Expr
+  | BvudivExpr Expr Expr
+  | BvugeExpr Expr Expr
+  | BvugtExpr Expr Expr
+  | BvuleExpr Expr Expr
+  | BvultExpr Expr Expr
+  | BvuremExpr Expr Expr
+  | BvxnorExpr Expr Expr
+  | BvxorExpr Expr Expr
+  | BvExpr Int Int
+  | CompoundExpr -- ! `[<expr1> <expr2> <expr3> ...]` node
+  | ConcatExpr [Expr]
+  | DecimalExpr Int --float?
+  | DeclareExpr --wtf?
+  | DistinctExpr Expr Expr
+  | EqualExpr Expr Expr
+  | ExtractExpr Int Int Expr -- ! `((_ extract <high> <low>) <expr>)` node
+  | ReplaceExpr Int Int Expr Expr
+  | IffExpr Expr Expr -- ! `(iff <expr1> <expr2>)`
+  | IteExpr Expr Expr Expr -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
+  | LandExpr Expr Expr
+  | LetExpr String Expr Expr
+  | LnotExpr Expr
+  | LorExpr Expr Expr
+  | ReferenceExpr --fix
+  | StringExpr String
+  | SxExpr Int Expr
+  | VariableExpr
+  | ZxExpr Int Expr
+  | UndefinedExpr -- The undefined value
+  | Read Int Expr
   | GetReg CompoundReg
   deriving (Eq, Show)
 
 data Stmt =
-    Store Int AstNode AstNode
-  | Branch AstNode AstNode
-  | SetReg CompoundReg AstNode
+    Store Int Expr Expr
+  | Branch Expr Expr
+  | SetReg CompoundReg Expr
   deriving (Eq, Show)
 

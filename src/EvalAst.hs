@@ -36,38 +36,38 @@ oneBitsUpto high = (shift 1 (high + 1)) - 1
 
 oneBitsBetween high low = oneBitsUpto high - (oneBitsUpto (low - 1))
 
--- Evaluates the given node in the given context and returns the result
+-- Evaluates the given expression in the given context and returns the result
 
-eval :: ExecutionContext -> AstNode -> Int
+eval :: ExecutionContext -> Expr -> Int
 
-eval cin (BvNode a _) = a
+eval cin (BvExpr a _) = a
 
-eval cin (BvxorNode a b) = xor (eval cin a) (eval cin b)
+eval cin (BvxorExpr a b) = xor (eval cin a) (eval cin b)
 
-eval cin (BvandNode a b) = (eval cin a) .&. (eval cin b)
+eval cin (BvandExpr a b) = (eval cin a) .&. (eval cin b)
 
-eval cin (BvorNode a b) = (eval cin a) .|. (eval cin b)
+eval cin (BvorExpr a b) = (eval cin a) .|. (eval cin b)
 
-eval cin (BvnotNode a) = complement (eval cin a)
+eval cin (BvnotExpr a) = complement (eval cin a)
 
-eval cin (EqualNode a b) = if (eval cin a) == (eval cin b) then 1 else 0
+eval cin (EqualExpr a b) = if (eval cin a) == (eval cin b) then 1 else 0
 
-eval cin (BvaddNode a b) = (eval cin a) + (eval cin b)
+eval cin (BvaddExpr a b) = (eval cin a) + (eval cin b)
 
-eval cin (BvsubNode a b) = (eval cin a) - (eval cin b)
+eval cin (BvsubExpr a b) = (eval cin a) - (eval cin b)
 
-eval cin (BvlshrNode a b) = convert (shift ((convert (eval cin a)) :: Word) (-(eval cin b)))
+eval cin (BvlshrExpr a b) = convert (shift ((convert (eval cin a)) :: Word) (-(eval cin b)))
 
-eval cin (ZxNode a b) = eval cin b
+eval cin (ZxExpr a b) = eval cin b
 
-eval cin (IteNode a b c) =
+eval cin (IteExpr a b c) =
   if (eval cin a) /= 0 then eval cin b
   else eval cin c
 
-eval cin (ReplaceNode a b c d) =
+eval cin (ReplaceExpr a b c d) =
   ((eval cin c) .&. (complement (oneBitsBetween a b))) .|. shift (eval cin d) b
 
-eval cin (ExtractNode a b c) = (shift (eval cin c) (-b)) .&. ((2 ^ (a + 1 - b)) - 1)
+eval cin (ExtractExpr a b c) = (shift (eval cin c) (-b)) .&. ((2 ^ (a + 1 - b)) - 1)
 
 eval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 
@@ -157,6 +157,6 @@ iter fun 0 x = x
 iter fun n x = iter fun (n - 1) (fun x)
 
 -- by default all undefined regs are symbolic?
-symbolicEval :: ExecutionContext -> [AstNode] -> ExecutionContext
+symbolicEval :: ExecutionContext -> [Expr] -> ExecutionContext
 symbolicEval cin ast =
           cin
