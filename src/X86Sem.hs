@@ -10,7 +10,11 @@ import AstContext
 import Data.Maybe
 import Data.Word
 
---ll, ml, hl
+inc_insn_ptr :: [CsMode] -> CsInsn -> Stmt
+
+inc_insn_ptr modes insn =
+  SetReg (get_insn_ptr modes) (BvExpr ((convert (address insn)) + (length (bytes insn)))
+    (get_arch_size modes))
 
 -- Make operation to set the zero flag to the value that it would have after some operation
 
@@ -84,8 +88,8 @@ sf_s parent dst =
 
 -- Make list of operations in the IR that has the same semantics as the X86 add instruction
 
-add_s :: CsInsn -> [Stmt]
-add_s inst =
+add_s :: [CsMode] -> CsInsn -> [Stmt]
+add_s modes inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
       op2ast = getOperandAst op2
@@ -97,7 +101,8 @@ add_s inst =
       sf_s add_node op1,
       zf_s add_node op1,
       cf_add_s add_node op1 op1ast op1ast,
-      of_add_s add_node op1 op1ast op1ast
+      of_add_s add_node op1 op1ast op1ast,
+      inc_insn_ptr modes inst
     ]
 
 -- Make operation to set the carry flag to the value that it would have after an sub operation
@@ -124,8 +129,8 @@ of_sub_s parent dst op1ast op2ast =
 
 -- Make list of operations in the IR that has the same semantics as the X86 sub instruction
 
-sub_s :: CsInsn -> [Stmt]
-sub_s inst =
+sub_s :: [CsMode] -> CsInsn -> [Stmt]
+sub_s modes inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
       op2ast = getOperandAst op2
@@ -137,13 +142,14 @@ sub_s inst =
       sf_s sub_node op1,
       zf_s sub_node op1,
       cf_sub_s sub_node op1 op1ast op1ast,
-      of_sub_s sub_node op1 op1ast op1ast
+      of_sub_s sub_node op1 op1ast op1ast,
+      inc_insn_ptr modes inst
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 xor instruction
 
-xor_s :: CsInsn -> [Stmt]
-xor_s inst =
+xor_s :: [CsMode] -> CsInsn -> [Stmt]
+xor_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
       src_ast = getOperandAst src_op
@@ -155,13 +161,14 @@ xor_s inst =
       sf_s xor_node dst_op,
       zf_s xor_node dst_op,
       set_flag X86FlagCf (BvExpr 0 1),
-      set_flag X86FlagOf (BvExpr 0 1)
+      set_flag X86FlagOf (BvExpr 0 1),
+      inc_insn_ptr modes inst
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 and instruction
 
-and_s :: CsInsn -> [Stmt]
-and_s inst =
+and_s :: [CsMode] -> CsInsn -> [Stmt]
+and_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
       src_ast = getOperandAst src_op
@@ -173,13 +180,14 @@ and_s inst =
       sf_s and_node dst_op,
       zf_s and_node dst_op,
       set_flag X86FlagCf (BvExpr 0 1),
-      set_flag X86FlagOf (BvExpr 0 1)
+      set_flag X86FlagOf (BvExpr 0 1),
+      inc_insn_ptr modes inst
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 or instruction
 
-or_s :: CsInsn -> [Stmt]
-or_s inst =
+or_s :: [CsMode] -> CsInsn -> [Stmt]
+or_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
       src_ast = getOperandAst src_op
@@ -191,7 +199,8 @@ or_s inst =
       sf_s and_node dst_op,
       zf_s and_node dst_op,
       set_flag X86FlagCf (BvExpr 0 1),
-      set_flag X86FlagOf (BvExpr 0 1)
+      set_flag X86FlagOf (BvExpr 0 1),
+      inc_insn_ptr modes inst
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 push instruction
@@ -207,7 +216,8 @@ push_s modes inst =
         _ -> convert $ size op1
   in [
       SetReg sp (BvsubExpr (GetReg sp) (BvExpr op_size (arch_size * 8))),
-      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size op1)) * 8) (getOperandAst op1))
+      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size op1)) * 8) (getOperandAst op1)),
+      inc_insn_ptr modes inst
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
@@ -236,13 +246,14 @@ pop_s modes inst =
       delta_val = (BvExpr op_size (arch_size * 8))
   in
     (includeIf sp_base [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
-    ++ [store_node op1 (Read op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
+    ++ [store_node op1 (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
     ++ (includeIf (not (sp_base || sp_reg)) [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
+    ++ [inc_insn_ptr modes inst]
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
 
-mov_s ::  CsInsn -> [Stmt]
-mov_s inst =
+mov_s :: [CsMode] -> CsInsn -> [Stmt]
+mov_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
       src_ast = getOperandAst src_op
@@ -270,14 +281,20 @@ mov_s inst =
         set_flag X86FlagZf UndefinedExpr,
         set_flag X86FlagCf UndefinedExpr,
         set_flag X86FlagOf UndefinedExpr]
+    ++ [inc_insn_ptr modes inst]
 
 -- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
 
-jmp_s :: CsInsn -> [Stmt]
-jmp_s inst =
+jmp_s :: [CsMode] -> CsInsn -> [Stmt]
+jmp_s modes inst =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst src_op
-  in [Branch (BvExpr 1 1) src_ast]
+  in [SetReg (get_insn_ptr modes) src_ast]
+
+--je_s :: CsInsn -> [Stmt]
+--je_s inst =
+--  let (src_op : _ ) = x86operands inst
+--      src_ast = getOperandAst src_op
 
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86
 getCsX86arch inst =
@@ -291,18 +308,6 @@ x86operands inst =
   let arch2 = getCsX86arch (Capstone.detail inst)
       ops = maybe [] operands arch2
   in ops
-
-get_stack_reg :: [CsMode] -> CompoundReg
-get_stack_reg modes =
-  if elem CsMode32 modes then compoundReg X86RegEsp
-  else if elem CsMode32 modes then compoundReg X86RegRsp
-  else error "Processor modes underspecified."
-
-get_arch_size :: [CsMode] -> Int
-get_arch_size modes =
-  if elem CsMode32 modes then 4
-  else if elem CsMode32 modes then 8
-  else error "Processor modes underspecified."
 
 store_node :: CsX86Op -> Expr -> Stmt
 store_node operand store_what =

@@ -12,7 +12,7 @@ getOperandAst :: CsX86Op -> Expr
 getOperandAst op = case value op of
   (Imm value) -> BvExpr (convert value) (convert (size op) * 8)
   (Reg reg) -> GetReg (compoundReg reg)
-  (Mem mem) -> Read (convert $ size op) (getLeaAst mem)
+  (Mem mem) -> Load (convert $ size op) (getLeaAst mem)
 
 
 getLeaAst :: X86OpMemStruct -> Expr

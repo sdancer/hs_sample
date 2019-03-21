@@ -4,28 +4,28 @@ import Ast
 import Hapstone.Internal.X86 as X86
 import Util
 import Data.Bits
-import Debug.Trace
+import Hapstone.Internal.Capstone as Capstone
 
--- Represents the state of a processor: register file contents, memory contents, the
--- instructions being executed, and the instruction pointer contents.
+-- Represents the state of a processor: register file contents, data memory contents, and
+-- the instruction memory.
 
 data ExecutionContext = ExecutionContext {
   reg_file :: [Int],
   memory :: [(Int, Int)],
-  stmts :: [(Label,Stmt)],
-  insn_ptr :: Ast.Label
+  stmts :: [(Int, [Stmt])],
+  proc_modes :: [CsMode]
 } deriving (Eq, Show)
 
--- Creates a context where the instruction pointer points to an instruction, and memory
--- and the register file are uninitialized.
+-- Creates a context where the instruction pointer points to the first instruction, and
+-- memory and the register file are uninitialized.
 
-uninitializedX86Context :: [(Label,Stmt)] -> Label -> ExecutionContext
+uninitializedX86Context :: [CsMode] -> [(Int, [Stmt])] -> ExecutionContext
 
-uninitializedX86Context stmts insn_ptr = ExecutionContext {
+uninitializedX86Context modes stmts = ExecutionContext {
   memory = [],
-  reg_file = replicate reg_file_bytes 0,
+  reg_file = update_reg_file (replicate reg_file_bytes 0) (get_insn_ptr modes) (fst (head stmts)),
   stmts = stmts,
-  insn_ptr = insn_ptr
+  proc_modes = modes
 }
 
 -- Evaluates to a bit vector with all 1s up to bit high
@@ -71,17 +71,9 @@ eval cin (ExtractExpr a b c) = (shift (eval cin c) (-b)) .&. ((2 ^ (a + 1 - b)) 
 
 eval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 
-eval cin (Read a b) =
+eval cin (Load a b) =
   let memStart = eval cin b
     in getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
-
--- Replace the given index of the given list with the given value
-
-replace :: [a] -> Int -> a -> [a]
-
-replace (_:xs) 0 val = val:xs
-
-replace (x:xs) idx val = x:(replace xs (idx - 1) val)
 
 -- Assigns the given value to the given key. Adds a new association to the list if necessary
 
@@ -101,52 +93,40 @@ after (x:y:ys) z | x == z = y
 
 after (x:xs) y = after xs y
 
-exec_aux :: ExecutionContext -> Stmt -> ExecutionContext
+exec :: ExecutionContext -> Stmt -> ExecutionContext
 
 -- Executes a SetReg operation by setting each byte of the register separately
 
-exec_aux cin (SetReg bs a) =
-  let (insn_ptrs, _) = unzip (stmts cin)
-      update_reg_file regs [] _ = regs
-      update_reg_file regs (c:cs) val =
-        update_reg_file (replace regs c (val .&. ((2 ^ byte_size_bit) - 1))) cs (shift val (-byte_size_bit))
-  in ExecutionContext {
+exec cin (SetReg bs a) = ExecutionContext {
     reg_file = update_reg_file (reg_file cin) bs (eval cin a),
     memory = memory cin,
     stmts = stmts cin,
-    insn_ptr = after insn_ptrs (insn_ptr cin)
+    proc_modes = proc_modes cin
   }
 
 -- Executes a Store operation by setting each byte of memory separately
 
-exec_aux cin (Store n dst val) =
-  let (insn_ptrs, _) = unzip (stmts cin)
-      updateMemory mem 0 _ _ = mem
+exec cin (Store n dst val) =
+  let updateMemory mem 0 _ _ = mem
       updateMemory mem c d v =
         updateMemory (assign mem (d, (v .&. ((2 ^ byte_size_bit) - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
   in ExecutionContext {
     reg_file = reg_file cin,
     memory = updateMemory (memory cin) n (eval cin dst) (eval cin val),
     stmts = stmts cin,
-    insn_ptr = after insn_ptrs (insn_ptr cin)
+    proc_modes = proc_modes cin
   }
 
--- Executes a Branch operation by changing the instruction pointer
+-- Executes the statements pointed to by the instruction pointer and returns the new context
 
-exec_aux cin (Branch cond lbl) = ExecutionContext {
-    reg_file = reg_file cin,
-    memory = memory cin,
-    stmts = stmts cin,
-    insn_ptr = if eval cin cond /= 0 then (eval cin lbl, 0) else insn_ptr cin
-  }
+step :: ExecutionContext -> ExecutionContext
 
--- Executes the statement pointed to by the instruction pointer and returns the new context
-
-exec :: ExecutionContext -> ExecutionContext
-
-exec cin = case lookup (insn_ptr cin) (stmts cin) of
-  Nothing -> error "Instruction pointer has invalid value."
-  Just x -> exec_aux cin x
+step cin =
+  let procInsnPtr = get_insn_ptr (proc_modes cin)
+      registerValue = getRegisterValue (reg_file cin) procInsnPtr
+  in case lookup registerValue (stmts cin) of
+    Nothing -> error "Instruction pointer has invalid value."
+    Just x -> foldl exec cin x
 
 -- Applies the given function on the given argument a given number of times
 

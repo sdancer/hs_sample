@@ -3,6 +3,8 @@ module Ast where
 import Data.Word
 import Data.List
 import Hapstone.Internal.X86 as X86
+import Hapstone.Internal.Capstone as Capstone
+import Data.Bits
 
 byte_size_bit :: Num a => a
 byte_size_bit = 8
@@ -15,7 +17,7 @@ qqword_size_bit = 256
 dqqword_size_bit = 512
 
 reg_file_bytes :: Num a => a
-reg_file_bytes = 184
+reg_file_bytes = 192
 
 data X86Flag =
     X86FlagCf | X86FlagPf | X86FlagAf | X86FlagZf | X86FlagSf | X86FlagTf | X86FlagIf
@@ -69,6 +71,7 @@ x86RegisterMap = [
   (X86RegDi, [32..33]), (X86RegSi, [40..41]), (X86RegBp, [48..49]), (X86RegSp, [56..57]),
   (X86RegR8w, [64..65]), (X86RegR9w, [72..73]), (X86RegR10w, [80..81]), (X86RegR11w, [88..89]),
   (X86RegR12w, [96..97]), (X86RegR13w, [104..105]), (X86RegR14w, [112..113]), (X86RegR15w, [120..121]),
+  (X86RegIp, [184, 185]),
 
 -- 32-bit operands
 
@@ -76,6 +79,7 @@ x86RegisterMap = [
   (X86RegEdi, [32..35]), (X86RegEsi, [40..43]), (X86RegEbp, [48..51]), (X86RegEsp, [56..59]),
   (X86RegR8d, [64..67]), (X86RegR9d, [72..75]), (X86RegR10d, [80..83]), (X86RegR11d, [88..91]),
   (X86RegR12d, [96..99]), (X86RegR13d, [104..107]), (X86RegR14d, [112..115]), (X86RegR15d, [120..123]),
+  (X86RegEip, [184, 187]),
 
 -- 64-bit operands
 
@@ -83,6 +87,7 @@ x86RegisterMap = [
   (X86RegRdi, [32..39]), (X86RegRsi, [40..47]), (X86RegRbp, [48..55]), (X86RegRsp, [56..63]),
   (X86RegR8, [64..71]), (X86RegR9, [72..79]), (X86RegR10, [80..87]), (X86RegR11, [88..95]),
   (X86RegR12, [96..103]), (X86RegR13, [104..111]), (X86RegR14, [112..119]), (X86RegR15, [120..127]),
+  (X86RegRip, [184, 191]),
 
 -- Segment Registers
 
@@ -101,6 +106,27 @@ compoundReg reg = case lookup reg x86RegisterMap of
   Nothing -> error "X86 register could not be found in map."
   Just x -> x
 
+get_stack_reg :: [CsMode] -> CompoundReg
+get_stack_reg modes =
+  if elem CsMode16 modes then compoundReg X86RegSp
+  else if elem CsMode32 modes then compoundReg X86RegEsp
+  else if elem CsMode64 modes then compoundReg X86RegRsp
+  else error "Processor modes underspecified."
+
+get_insn_ptr :: [CsMode] -> CompoundReg
+get_insn_ptr modes =
+  if elem CsMode16 modes then compoundReg X86RegIp
+  else if elem CsMode32 modes then compoundReg X86RegEip
+  else if elem CsMode64 modes then compoundReg X86RegRip
+  else error "Processor modes underspecified."
+
+get_arch_size :: [CsMode] -> Int
+get_arch_size modes =
+  if elem CsMode16 modes then 2
+  else if elem CsMode32 modes then 4
+  else if elem CsMode64 modes then 8
+  else error "Processor modes underspecified."
+
 -- Gets the value of the specified compound register from the register file
 
 getRegisterValue :: [Int] -> CompoundReg -> Int
@@ -109,6 +135,19 @@ getRegisterValue regFile [] = 0
 
 getRegisterValue regFile (b:bs) =
   (regFile !! b) + (2 ^ word_size_bit) * (getRegisterValue regFile bs)
+
+-- Replace the given index of the given list with the given value
+
+replace :: [a] -> Int -> a -> [a]
+
+replace (_:xs) 0 val = val:xs
+
+replace (x:xs) idx val = x:(replace xs (idx - 1) val)
+
+update_reg_file regs [] _ = regs
+
+update_reg_file regs (c:cs) val =
+  update_reg_file (replace regs c (val .&. ((2 ^ byte_size_bit) - 1))) cs (shift val (-byte_size_bit))
 
 -- Gets the specified bytes from memory
 
@@ -198,13 +237,12 @@ data Expr =
   | VariableExpr
   | ZxExpr Int Expr
   | UndefinedExpr -- The undefined value
-  | Read Int Expr
+  | Load Int Expr
   | GetReg CompoundReg
   deriving (Eq, Show)
 
 data Stmt =
     Store Int Expr Expr
-  | Branch Expr Expr
   | SetReg CompoundReg Expr
   deriving (Eq, Show)
 
