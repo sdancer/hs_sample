@@ -45,8 +45,6 @@ flagToBit flag = case flag of
   X86FlagVip -> (20,20)
   X86FlagId -> (21,21)
 
-type Label = (Int, Int)
-
 -- A representation of a register as a list of indicies. Enables overlapping registers.
 
 type CompoundReg = [Int]
@@ -106,6 +104,8 @@ compoundReg reg = case lookup reg x86RegisterMap of
   Nothing -> error "X86 register could not be found in map."
   Just x -> x
 
+-- Gets the stack register for the given processor mode
+
 get_stack_reg :: [CsMode] -> CompoundReg
 get_stack_reg modes =
   if elem CsMode16 modes then compoundReg X86RegSp
@@ -113,12 +113,16 @@ get_stack_reg modes =
   else if elem CsMode64 modes then compoundReg X86RegRsp
   else error "Processor modes underspecified."
 
+-- Gets the instruction pointer for the given processor mode
+
 get_insn_ptr :: [CsMode] -> CompoundReg
 get_insn_ptr modes =
   if elem CsMode16 modes then compoundReg X86RegIp
   else if elem CsMode32 modes then compoundReg X86RegEip
   else if elem CsMode64 modes then compoundReg X86RegRip
   else error "Processor modes underspecified."
+
+-- Gets the architecture size for the given processor mode
 
 get_arch_size :: [CsMode] -> Int
 get_arch_size modes =
@@ -143,6 +147,10 @@ replace :: [a] -> Int -> a -> [a]
 replace (_:xs) 0 val = val:xs
 
 replace (x:xs) idx val = x:(replace xs (idx - 1) val)
+
+-- Updates the given register file by putting the given value in the given register
+
+update_reg_file :: [Int] -> CompoundReg -> Int -> [Int]
 
 update_reg_file regs [] _ = regs
 

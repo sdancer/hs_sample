@@ -85,14 +85,6 @@ assign ((c, d) : es) (a, b) | c == a = (a, b) : es
 
 assign ((c, d) : es) (a, b) | c /= a = (c, d) : assign es (a, b)
 
--- Gets the successor of the given element in the given list.
-
-after :: Eq a => [a] -> a -> a
-
-after (x:y:ys) z | x == z = y
-
-after (x:xs) y = after xs y
-
 exec :: ExecutionContext -> Stmt -> ExecutionContext
 
 -- Executes a SetReg operation by setting each byte of the register separately
@@ -117,7 +109,8 @@ exec cin (Store n dst val) =
     proc_modes = proc_modes cin
   }
 
--- Executes the statements pointed to by the instruction pointer and returns the new context
+-- Executes a group of statements pointed to by the instruction pointer and returns the
+-- new context
 
 step :: ExecutionContext -> ExecutionContext
 

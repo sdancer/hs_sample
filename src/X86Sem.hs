@@ -95,14 +95,14 @@ add_s modes inst =
       op2ast = getOperandAst op2
       add_node = (BvaddExpr op1ast op2ast)
   in [
+      inc_insn_ptr modes inst,
       store_node op1 add_node,
       af_s add_node op1 op1ast op1ast,
       pf_s add_node op1,
       sf_s add_node op1,
       zf_s add_node op1,
       cf_add_s add_node op1 op1ast op1ast,
-      of_add_s add_node op1 op1ast op1ast,
-      inc_insn_ptr modes inst
+      of_add_s add_node op1 op1ast op1ast
     ]
 
 -- Make operation to set the carry flag to the value that it would have after an sub operation
@@ -136,14 +136,14 @@ sub_s modes inst =
       op2ast = getOperandAst op2
       sub_node = (BvsubExpr op1ast op2ast)
   in [
+      inc_insn_ptr modes inst,
       store_node op1 sub_node,
       af_s sub_node op1 op1ast op1ast,
       pf_s sub_node op1,
       sf_s sub_node op1,
       zf_s sub_node op1,
       cf_sub_s sub_node op1 op1ast op1ast,
-      of_sub_s sub_node op1 op1ast op1ast,
-      inc_insn_ptr modes inst
+      of_sub_s sub_node op1 op1ast op1ast
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 xor instruction
@@ -155,14 +155,14 @@ xor_s modes inst =
       src_ast = getOperandAst src_op
       xor_node = (BvxorExpr dst_ast src_ast)
   in [
+      inc_insn_ptr modes inst,
       store_node dst_op xor_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s xor_node dst_op,
       sf_s xor_node dst_op,
       zf_s xor_node dst_op,
       set_flag X86FlagCf (BvExpr 0 1),
-      set_flag X86FlagOf (BvExpr 0 1),
-      inc_insn_ptr modes inst
+      set_flag X86FlagOf (BvExpr 0 1)
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 and instruction
@@ -174,14 +174,14 @@ and_s modes inst =
       src_ast = getOperandAst src_op
       and_node = (BvandExpr dst_ast src_ast)
   in [
+      inc_insn_ptr modes inst,
       store_node dst_op and_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s and_node dst_op,
       sf_s and_node dst_op,
       zf_s and_node dst_op,
       set_flag X86FlagCf (BvExpr 0 1),
-      set_flag X86FlagOf (BvExpr 0 1),
-      inc_insn_ptr modes inst
+      set_flag X86FlagOf (BvExpr 0 1)
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 or instruction
@@ -193,14 +193,14 @@ or_s modes inst =
       src_ast = getOperandAst src_op
       and_node = (BvorExpr dst_ast src_ast)
   in [
+      inc_insn_ptr modes inst,
       store_node dst_op and_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s and_node dst_op,
       sf_s and_node dst_op,
       zf_s and_node dst_op,
       set_flag X86FlagCf (BvExpr 0 1),
-      set_flag X86FlagOf (BvExpr 0 1),
-      inc_insn_ptr modes inst
+      set_flag X86FlagOf (BvExpr 0 1)
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 push instruction
@@ -215,9 +215,9 @@ push_s modes inst =
         (Imm _) -> arch_size
         _ -> convert $ size op1
   in [
+      inc_insn_ptr modes inst,
       SetReg sp (BvsubExpr (GetReg sp) (BvExpr op_size (arch_size * 8))),
-      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size op1)) * 8) (getOperandAst op1)),
-      inc_insn_ptr modes inst
+      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size op1)) * 8) (getOperandAst op1))
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
@@ -245,10 +245,10 @@ pop_s modes inst =
       -- An expression of the amount the stack pointer will be increased by
       delta_val = (BvExpr op_size (arch_size * 8))
   in
-    (includeIf sp_base [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
+    [inc_insn_ptr modes inst]
+    ++ (includeIf sp_base [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
     ++ [store_node op1 (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
     ++ (includeIf (not (sp_base || sp_reg)) [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
-    ++ [inc_insn_ptr modes inst]
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
 
@@ -273,7 +273,8 @@ mov_s modes inst =
           (Reg reg) | is_control_reg reg -> True
           _ -> False
   in
-    [store_node dst_op node]
+    [inc_insn_ptr modes inst]
+    ++ [store_node dst_op node]
     ++ includeIf undef
         [set_flag X86FlagAf UndefinedExpr,
         set_flag X86FlagPf UndefinedExpr,
@@ -281,7 +282,6 @@ mov_s modes inst =
         set_flag X86FlagZf UndefinedExpr,
         set_flag X86FlagCf UndefinedExpr,
         set_flag X86FlagOf UndefinedExpr]
-    ++ [inc_insn_ptr modes inst]
 
 -- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
 
