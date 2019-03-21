@@ -10,15 +10,51 @@ import AstContext
 import Data.Maybe
 import Data.Word
 
+-- Makes an expression representing the address of the next instruction
+
+next_instr_ptr :: [CsMode] -> CsInsn -> Expr
+
+next_instr_ptr modes insn =
+  BvExpr ((convert (address insn)) + (length (bytes insn))) (get_arch_size modes)
+
+-- Make operation to increase instruction pointer by size of instruction
+
 inc_insn_ptr :: [CsMode] -> CsInsn -> Stmt
 
-inc_insn_ptr modes insn =
-  SetReg (get_insn_ptr modes) (BvExpr ((convert (address insn)) + (length (bytes insn)))
-    (get_arch_size modes))
+inc_insn_ptr modes insn = SetReg (get_insn_ptr modes) (next_instr_ptr modes insn)
+
+-- Make operation to store the given expression in the given operand
+
+store_node :: CsX86Op -> Expr -> Stmt
+
+store_node operand store_what =
+  case (value operand) of
+    (Reg reg) -> SetReg (compoundReg reg) store_what
+    (Mem mem) -> Store (convert $ size operand) (getLeaAst mem) store_what
+    _ -> error "Target of store operation is neither a register nor a memory operand."
+
+-- Make operation to set the given flag of FLAGS register to the given value
+
+set_flag :: X86Flag -> Expr -> Stmt
+
+set_flag flag expr =
+  let compReg = compoundReg X86RegEflags
+      (low, high) = flagToBit flag
+    in SetReg compReg (ReplaceExpr high low (GetReg compReg) expr)
+
+-- Make an expression representing the given flag of the FLAGS register
+
+get_flag :: X86Flag -> Expr
+
+get_flag flag =
+  let compReg = compoundReg X86RegEflags
+      (low, high) = flagToBit flag
+    in ExtractExpr high low (GetReg compReg)
 
 -- Make operation to set the zero flag to the value that it would have after some operation
 
 zf_s :: Expr -> CsX86Op -> Stmt
+
 zf_s parent dst =
   let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagZf (IteExpr
@@ -29,6 +65,7 @@ zf_s parent dst =
 -- Make operation to set the overflow flag to the value that it would have after an add operation
 
 of_add_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt
+
 of_add_s parent dst op1ast op2ast =
   let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagOf (ExtractExpr (bv_size - 1) (bv_size - 1)
@@ -39,6 +76,7 @@ of_add_s parent dst op1ast op2ast =
 -- Make operation to set the carry flag to the value that it would have after an add operation
 
 cf_add_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt
+
 cf_add_s parent dst op1ast op2ast =
   let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagCf (ExtractExpr (bv_size - 1) (bv_size - 1)
@@ -51,6 +89,7 @@ cf_add_s parent dst op1ast op2ast =
 -- Make operation to set the adjust flag to the value that it would have after some operation
 
 af_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt
+
 af_s parent dst op1ast op2ast =
   let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagAf (IteExpr
@@ -67,6 +106,7 @@ af_s parent dst op1ast op2ast =
 -- Make operation to set the parity flag to the value that it would have after some operation
 
 pf_s :: Expr -> CsX86Op -> Stmt
+
 pf_s parent dst =
   let loop counter =
         (if counter == byte_size_bit
@@ -82,6 +122,7 @@ pf_s parent dst =
 -- Make operation to set the sign flag to the value that it would have after some operation
 
 sf_s :: Expr -> CsX86Op -> Stmt
+
 sf_s parent dst =
   let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagSf (ExtractExpr (bv_size - 1) (bv_size - 1) parent)
@@ -89,6 +130,7 @@ sf_s parent dst =
 -- Make list of operations in the IR that has the same semantics as the X86 add instruction
 
 add_s :: [CsMode] -> CsInsn -> [Stmt]
+
 add_s modes inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
@@ -108,6 +150,7 @@ add_s modes inst =
 -- Make operation to set the carry flag to the value that it would have after an sub operation
 
 cf_sub_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt
+
 cf_sub_s parent dst op1ast op2ast =
   let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagCf (ExtractExpr (bv_size - 1) (bv_size - 1)
@@ -120,6 +163,7 @@ cf_sub_s parent dst op1ast op2ast =
 -- Make operation to set the overflow flag to the value that it would have after an sub operation
 
 of_sub_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt
+
 of_sub_s parent dst op1ast op2ast =
   let bv_size = (convert $ size dst) * 8 in
     set_flag X86FlagOf (ExtractExpr (bv_size - 1) (bv_size - 1)
@@ -130,6 +174,7 @@ of_sub_s parent dst op1ast op2ast =
 -- Make list of operations in the IR that has the same semantics as the X86 sub instruction
 
 sub_s :: [CsMode] -> CsInsn -> [Stmt]
+
 sub_s modes inst =
   let (op1 : op2 : _ ) = x86operands inst
       op1ast = getOperandAst op1
@@ -149,6 +194,7 @@ sub_s modes inst =
 -- Make list of operations in the IR that has the same semantics as the X86 xor instruction
 
 xor_s :: [CsMode] -> CsInsn -> [Stmt]
+
 xor_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
@@ -168,6 +214,7 @@ xor_s modes inst =
 -- Make list of operations in the IR that has the same semantics as the X86 and instruction
 
 and_s :: [CsMode] -> CsInsn -> [Stmt]
+
 and_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
@@ -187,6 +234,7 @@ and_s modes inst =
 -- Make list of operations in the IR that has the same semantics as the X86 or instruction
 
 or_s :: [CsMode] -> CsInsn -> [Stmt]
+
 or_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
@@ -206,6 +254,7 @@ or_s modes inst =
 -- Make list of operations in the IR that has the same semantics as the X86 push instruction
 
 push_s :: [CsMode] -> CsInsn -> [Stmt]
+
 push_s modes inst =
   let (op1 : _) = x86operands inst
       sp = (get_stack_reg modes)
@@ -224,11 +273,13 @@ push_s modes inst =
 -- the empty list.
 
 includeIf :: Bool -> [a] -> [a]
+
 includeIf cond sublist = if cond then sublist else []
 
 -- Make list of operations in the IR that has the same semantics as the X86 pop instruction
 
 pop_s :: [CsMode] -> CsInsn -> [Stmt]
+
 pop_s modes inst =
   let (op1 : _) = x86operands inst
       sp = get_stack_reg modes
@@ -253,6 +304,7 @@ pop_s modes inst =
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
 
 mov_s :: [CsMode] -> CsInsn -> [Stmt]
+
 mov_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst dst_op
@@ -286,15 +338,23 @@ mov_s modes inst =
 -- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
 
 jmp_s :: [CsMode] -> CsInsn -> [Stmt]
+
 jmp_s modes inst =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst src_op
   in [SetReg (get_insn_ptr modes) src_ast]
 
---je_s :: CsInsn -> [Stmt]
---je_s inst =
---  let (src_op : _ ) = x86operands inst
---      src_ast = getOperandAst src_op
+-- Make a list of operations in the IR that has the same semantics as the X86 je instruction
+
+je_s :: [CsMode] -> CsInsn -> [Stmt]
+
+je_s modes inst =
+  let (src_op : _ ) = x86operands inst
+      src_ast = getOperandAst src_op
+  in [SetReg (get_insn_ptr modes)
+      (IteExpr (EqualExpr (get_flag X86FlagZf) (BvExpr 1 1))
+        src_ast
+        (next_instr_ptr modes inst))]
 
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86
 getCsX86arch inst =
@@ -308,16 +368,4 @@ x86operands inst =
   let arch2 = getCsX86arch (Capstone.detail inst)
       ops = maybe [] operands arch2
   in ops
-
-store_node :: CsX86Op -> Expr -> Stmt
-store_node operand store_what =
-  case (value operand) of
-    (Reg reg) -> SetReg (compoundReg reg) store_what
-    (Mem mem) -> Store (convert $ size operand) (getLeaAst mem) store_what
-    _ -> error "Target of store operation is neither a register nor a memory operand."
-
-set_flag flag expr =
-  let compReg = compoundReg X86RegEflags
-      (low, high) = flagToBit flag
-    in SetReg compReg (ReplaceExpr high low (GetReg compReg) expr)
     

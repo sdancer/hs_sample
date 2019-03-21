@@ -20,6 +20,7 @@ mmp modes a = (convert (address a), (case toEnum (fromIntegral (insnId a)) of
   X86InsAnd -> and_s
   X86InsOr -> or_s
   X86InsJmp -> jmp_s
+  X86InsJe -> je_s
   otherwise -> error ("Instruction " ++ mnemonic a ++ " not supported.")) modes a)
 
 liftAsm :: [CsMode] -> [CsInsn] -> [(Int, [Stmt])]
