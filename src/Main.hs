@@ -19,5 +19,5 @@ main = do
   case asm of
     Left _ -> print "error"
     -- Register ebx will contain 23 as it is the result of 0xa+0xd
-    Right b -> print (getRegisterValues (reg_file ((iter step 40) (uninitializedX86Context modes (liftAsm modes b)))))
+    Right b -> print (getRegisterValues (reg_file ((iter step 80) (uninitializedX86Context modes (liftAsm modes b)))))
 

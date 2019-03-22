@@ -25,9 +25,9 @@ inc_insn_ptr modes insn = SetReg (get_insn_ptr modes) (next_instr_ptr modes insn
 
 -- Make operation to store the given expression in the given operand
 
-store_node :: CsX86Op -> Expr -> Stmt
+store_stmt :: CsX86Op -> Expr -> Stmt
 
-store_node operand store_what =
+store_stmt operand store_what =
   case (value operand) of
     (Reg reg) -> SetReg (compoundReg reg) store_what
     (Mem mem) -> Store (convert $ size operand) (getLeaAst mem) store_what
@@ -138,7 +138,7 @@ add_s modes inst =
       add_node = (BvaddExpr op1ast op2ast)
   in [
       inc_insn_ptr modes inst,
-      store_node op1 add_node,
+      store_stmt op1 add_node,
       af_s add_node op1 op1ast op1ast,
       pf_s add_node op1,
       sf_s add_node op1,
@@ -182,7 +182,7 @@ sub_s modes inst =
       sub_node = (BvsubExpr op1ast op2ast)
   in [
       inc_insn_ptr modes inst,
-      store_node op1 sub_node,
+      store_stmt op1 sub_node,
       af_s sub_node op1 op1ast op1ast,
       pf_s sub_node op1,
       sf_s sub_node op1,
@@ -202,7 +202,7 @@ xor_s modes inst =
       xor_node = (BvxorExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
-      store_node dst_op xor_node,
+      store_stmt dst_op xor_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s xor_node dst_op,
       sf_s xor_node dst_op,
@@ -222,7 +222,7 @@ and_s modes inst =
       and_node = (BvandExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
-      store_node dst_op and_node,
+      store_stmt dst_op and_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s and_node dst_op,
       sf_s and_node dst_op,
@@ -242,7 +242,7 @@ or_s modes inst =
       and_node = (BvorExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
-      store_node dst_op and_node,
+      store_stmt dst_op and_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s and_node dst_op,
       sf_s and_node dst_op,
@@ -298,7 +298,7 @@ pop_s modes inst =
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
-    ++ [store_node op1 (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
+    ++ [store_stmt op1 (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
     ++ (includeIf (not (sp_base || sp_reg)) [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
@@ -325,8 +325,8 @@ mov_s modes inst =
           (Reg reg) | is_control_reg reg -> True
           _ -> False
   in
-    [inc_insn_ptr modes inst]
-    ++ [store_node dst_op node]
+    [inc_insn_ptr modes inst,
+    store_stmt dst_op node]
     ++ includeIf undef
         [set_flag X86FlagAf UndefinedExpr,
         set_flag X86FlagPf UndefinedExpr,

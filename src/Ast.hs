@@ -5,6 +5,7 @@ import Data.List
 import Hapstone.Internal.X86 as X86
 import Hapstone.Internal.Capstone as Capstone
 import Data.Bits
+import Util
 
 byte_size_bit :: Num a => a
 byte_size_bit = 8
@@ -138,7 +139,7 @@ getRegisterValue :: [Int] -> CompoundReg -> Int
 getRegisterValue regFile [] = 0
 
 getRegisterValue regFile (b:bs) =
-  (regFile !! b) + (2 ^ word_size_bit) * (getRegisterValue regFile bs)
+  (regFile !! b) + (shift (getRegisterValue regFile bs) byte_size_bit)
 
 -- Replace the given index of the given list with the given value
 
@@ -155,7 +156,8 @@ update_reg_file :: [Int] -> CompoundReg -> Int -> [Int]
 update_reg_file regs [] _ = regs
 
 update_reg_file regs (c:cs) val =
-  update_reg_file (replace regs c (val .&. ((2 ^ byte_size_bit) - 1))) cs (shift val (-byte_size_bit))
+  update_reg_file (replace regs c (val .&. ((shift 1 byte_size_bit) - 1))) cs
+    (convert (shift ((convert val) :: Word) (-byte_size_bit)))
 
 -- Gets the specified bytes from memory
 
@@ -166,7 +168,7 @@ getMemoryValue _ [] = 0
 getMemoryValue mem (b:bs) =
   case lookup b mem of
     Nothing -> error "Read attempted on uninitialized memory."
-    Just x -> x + (2 ^ word_size_bit) * (getMemoryValue mem bs)
+    Just x -> x + (shift (getMemoryValue mem bs) byte_size_bit)
 
 -- Get the register values from the register file
 
