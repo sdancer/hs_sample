@@ -26,3 +26,8 @@ main = do
     -- Register ebx will contain 23 as it is the result of 0xa+0xd
     Right b -> print (getRegisterValues (reg_file (run x86Context (concat (liftAsm modes b)))))
 
+
+
+
+
+
