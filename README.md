@@ -9,6 +9,11 @@ not much to say yet
 * compile IR back to native code
 * transformations (instrumentation)
 * decompiler backend
+* thread safe
+* correctness
+
+## non goals
+* symbolic evaluation performance or evaluation performance
 
 ## Setup and Build Instructions
 This project depends on Capstone version 3.0.4 and Hapstone version 0.3.0.0, the Haskell bindings for Capstone. Note that Hapstone version 0.3.0.0 is not on Hackage. Therefore, follow the following instructions to setup a development environment for Retoolkit:
