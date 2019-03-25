@@ -105,9 +105,16 @@ compoundReg reg = case lookup reg x86RegisterMap of
   Nothing -> error "X86 register could not be found in map."
   Just x -> x
 
+-- Gets the size of the given register in bits
+
+getRegSize :: CompoundReg -> Int
+
+getRegSize (l, h) = (h - l) * 8
+
 -- Gets the stack register for the given processor mode
 
 get_stack_reg :: [CsMode] -> CompoundReg
+
 get_stack_reg modes =
   if elem CsMode16 modes then compoundReg X86RegSp
   else if elem CsMode32 modes then compoundReg X86RegEsp
@@ -117,6 +124,7 @@ get_stack_reg modes =
 -- Gets the instruction pointer for the given processor mode
 
 get_insn_ptr :: [CsMode] -> CompoundReg
+
 get_insn_ptr modes =
   if elem CsMode16 modes then compoundReg X86RegIp
   else if elem CsMode32 modes then compoundReg X86RegEip
@@ -126,6 +134,7 @@ get_insn_ptr modes =
 -- Gets the architecture size for the given processor mode
 
 get_arch_size :: [CsMode] -> Int
+
 get_arch_size modes =
   if elem CsMode16 modes then 2
   else if elem CsMode32 modes then 4
