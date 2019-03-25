@@ -1,7 +1,6 @@
 module X86Sem where
 
 import Ast
-import AstContext (getOperandAst)
 import Hapstone.Capstone
 import Hapstone.Internal.Capstone as Capstone
 import Hapstone.Internal.X86      as X86
@@ -32,6 +31,15 @@ getOperandAst modes op = case value op of
   (Imm value) -> BvExpr (convert value) (convert (size op) * 8)
   (Reg reg) -> GetReg (compoundReg reg)
   (Mem mem) -> Load (convert $ size op) (getLeaAst modes mem)
+
+-- Gets the memory structure for the given operand.
+
+getMem :: CsX86OpValue -> X86OpMemStruct
+
+getMem op_val = case op_val of
+  (Imm value) -> error "Memory operand expected but immediate value found instead."
+  (Reg reg) -> error "Memory operand expected but register value found instead."
+  (Mem mem) -> mem
 
 -- Gets the specified register after it has been zero extended to the architecture size
 
@@ -166,19 +174,38 @@ sf_s parent dst =
 add_s :: [CsMode] -> CsInsn -> [Stmt]
 
 add_s modes inst =
-  let (op1 : op2 : _ ) = x86operands inst
-      op1ast = getOperandAst modes op1
-      op2ast = getOperandAst modes op2
-      add_node = (BvaddExpr op1ast op2ast)
+  let (dst : src : _ ) = x86operands inst
+      dst_ast = getOperandAst modes dst
+      src_ast = getOperandAst modes src
+      add_node = (BvaddExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
-      store_stmt modes op1 add_node,
-      af_s add_node op1 op1ast op1ast,
-      pf_s add_node op1,
-      sf_s add_node op1,
-      zf_s add_node op1,
-      cf_add_s add_node op1 op1ast op1ast,
-      of_add_s add_node op1 op1ast op1ast
+      store_stmt modes dst add_node,
+      af_s add_node dst dst_ast src_ast,
+      pf_s add_node dst,
+      sf_s add_node dst,
+      zf_s add_node dst,
+      cf_add_s add_node dst dst_ast src_ast,
+      of_add_s add_node dst dst_ast src_ast
+    ]
+
+-- Make list of operations in the IR that has the same semantics as the X86 inc instruction
+
+inc_s :: [CsMode] -> CsInsn -> [Stmt]
+
+inc_s modes inst =
+  let (dst : _ ) = x86operands inst
+      dst_ast = getOperandAst modes dst
+      src_ast = BvExpr 1 (fromIntegral (size dst * 8))
+      add_node = (BvaddExpr dst_ast src_ast)
+  in [
+      inc_insn_ptr modes inst,
+      store_stmt modes dst add_node,
+      af_s add_node dst dst_ast src_ast,
+      pf_s add_node dst,
+      sf_s add_node dst,
+      zf_s add_node dst,
+      of_add_s add_node dst dst_ast src_ast
     ]
 
 -- Make operation to set the carry flag to the value that it would have after an sub operation
@@ -210,19 +237,19 @@ of_sub_s parent dst op1ast op2ast =
 sub_s :: [CsMode] -> CsInsn -> [Stmt]
 
 sub_s modes inst =
-  let (op1 : op2 : _ ) = x86operands inst
-      op1ast = getOperandAst modes op1
-      op2ast = getOperandAst modes op2
-      sub_node = (BvsubExpr op1ast op2ast)
+  let (dst : src : _ ) = x86operands inst
+      dst_ast = getOperandAst modes dst
+      src_ast = getOperandAst modes src
+      sub_node = (BvsubExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
-      store_stmt modes op1 sub_node,
-      af_s sub_node op1 op1ast op1ast,
-      pf_s sub_node op1,
-      sf_s sub_node op1,
-      zf_s sub_node op1,
-      cf_sub_s sub_node op1 op1ast op1ast,
-      of_sub_s sub_node op1 op1ast op1ast
+      store_stmt modes dst sub_node,
+      af_s sub_node dst dst_ast src_ast,
+      pf_s sub_node dst,
+      sf_s sub_node dst,
+      zf_s sub_node dst,
+      cf_sub_s sub_node dst dst_ast src_ast,
+      of_sub_s sub_node dst dst_ast src_ast
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 cmp instruction
@@ -230,18 +257,18 @@ sub_s modes inst =
 cmp_s :: [CsMode] -> CsInsn -> [Stmt]
 
 cmp_s modes inst =
-  let (op1 : op2 : _ ) = x86operands inst
-      op1ast = getOperandAst modes op1
-      op2ast = SxExpr (convert ((size op1) - (size op2)) * 8) (getOperandAst modes op2)
-      cmp_node = (BvsubExpr op1ast op2ast)
+  let (dst : src : _ ) = x86operands inst
+      dst_ast = getOperandAst modes dst
+      src_ast = SxExpr (convert ((size dst) - (size src)) * 8) (getOperandAst modes src)
+      cmp_node = BvsubExpr dst_ast src_ast
   in [
       inc_insn_ptr modes inst,
-      af_s cmp_node op1 op1ast op1ast,
-      pf_s cmp_node op1,
-      sf_s cmp_node op1,
-      zf_s cmp_node op1,
-      cf_sub_s cmp_node op1 op1ast op1ast,
-      of_sub_s cmp_node op1 op1ast op1ast
+      af_s cmp_node dst dst_ast src_ast,
+      pf_s cmp_node dst,
+      sf_s cmp_node dst,
+      zf_s cmp_node dst,
+      cf_sub_s cmp_node dst dst_ast src_ast,
+      of_sub_s cmp_node dst dst_ast src_ast
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 xor instruction
@@ -309,17 +336,17 @@ or_s modes inst =
 push_s :: [CsMode] -> CsInsn -> [Stmt]
 
 push_s modes inst =
-  let (op1 : _) = x86operands inst
+  let (src : _) = x86operands inst
       sp = (get_stack_reg modes)
       arch_size = get_arch_size modes
       -- If it's an immediate source, the memory access is always based on the arch size
-      op_size = case (value op1) of
+      op_size = case (value src) of
         (Imm _) -> arch_size
-        _ -> convert $ size op1
+        _ -> convert $ size src
   in [
       inc_insn_ptr modes inst,
       SetReg sp (BvsubExpr (GetReg sp) (BvExpr op_size (arch_size * 8))),
-      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size op1)) * 8) (getOperandAst modes op1))
+      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size src)) * 8) (getOperandAst modes src))
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
@@ -334,16 +361,16 @@ includeIf cond sublist = if cond then sublist else []
 pop_s :: [CsMode] -> CsInsn -> [Stmt]
 
 pop_s modes inst =
-  let (op1 : _) = x86operands inst
+  let (dst : _) = x86operands inst
       sp = get_stack_reg modes
       arch_size = get_arch_size modes
-      op_size = convert $ size op1
+      op_size = convert $ size dst
       -- Is the ESP register is used as a base register for addressing a destination operand in memory?
-      sp_base = case (value op1) of
+      sp_base = case (value dst) of
         (Mem mem_struct) -> isSubregisterOf (compoundReg (base mem_struct)) sp
         _ -> False
       -- Is the destination register is SP?
-      sp_reg = case (value op1) of
+      sp_reg = case (value dst) of
         (Reg reg) -> isSubregisterOf (compoundReg reg) sp
         _ -> False
       -- An expression of the amount the stack pointer will be increased by
@@ -351,7 +378,7 @@ pop_s modes inst =
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
-    ++ [store_stmt modes op1 (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
+    ++ [store_stmt modes dst (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
     ++ (includeIf (not (sp_base || sp_reg)) [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
@@ -409,12 +436,33 @@ je_s modes inst =
         src_ast
         (next_instr_ptr modes inst))]
 
+-- Make list of operations in the IR that has the same semantics as the X86 lea instruction
+
+lea_s :: [CsMode] -> CsInsn -> [Stmt]
+
+lea_s modes inst =
+  let (dst_op : src_op : _ ) = x86operands inst
+      dst_ast = getOperandAst modes dst_op
+      dst_size = fromIntegral (size dst_op * 8)
+      src_ea = getLeaAst modes (getMem (value src_op))
+      src_ea_size = get_arch_size modes
+      src_ea_fitted =
+        if dst_size > src_ea_size then
+          ZxExpr (dst_size - src_ea_size) src_ea
+        else if dst_size < src_ea_size then
+          ExtractExpr (dst_size - 1) 0 src_ea
+        else src_ea
+  in [
+      inc_insn_ptr modes inst,
+      store_stmt modes dst_op src_ea_fitted
+    ]
+
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86
 getCsX86arch inst =
-            let arch = maybe Nothing archInfo inst
-            in case arch of
-              Just (X86 csx86) -> Just csx86
-              _ -> Nothing
+  let arch = maybe Nothing archInfo inst
+  in case arch of
+    Just (X86 csx86) -> Just csx86
+    _ -> Nothing
 
 x86operands :: CsInsn -> [CsX86Op]
 x86operands inst =
