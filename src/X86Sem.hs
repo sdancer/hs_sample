@@ -25,12 +25,12 @@ inc_insn_ptr modes insn = SetReg (get_insn_ptr modes) (next_instr_ptr modes insn
 
 -- Make operation to store the given expression in the given operand
 
-store_stmt :: CsX86Op -> Expr -> Stmt
+store_stmt :: [CsMode] -> CsX86Op -> Expr -> Stmt
 
-store_stmt operand store_what =
+store_stmt modes operand store_what =
   case (value operand) of
     (Reg reg) -> SetReg (compoundReg reg) store_what
-    (Mem mem) -> Store (convert $ size operand) (getLeaAst mem) store_what
+    (Mem mem) -> Store (convert $ size operand) (getLeaAst modes mem) store_what
     _ -> error "Target of store operation is neither a register nor a memory operand."
 
 -- Make operation to set the given flag of FLAGS register to the given value
@@ -133,12 +133,12 @@ add_s :: [CsMode] -> CsInsn -> [Stmt]
 
 add_s modes inst =
   let (op1 : op2 : _ ) = x86operands inst
-      op1ast = getOperandAst op1
-      op2ast = getOperandAst op2
+      op1ast = getOperandAst modes op1
+      op2ast = getOperandAst modes op2
       add_node = (BvaddExpr op1ast op2ast)
   in [
       inc_insn_ptr modes inst,
-      store_stmt op1 add_node,
+      store_stmt modes op1 add_node,
       af_s add_node op1 op1ast op1ast,
       pf_s add_node op1,
       sf_s add_node op1,
@@ -177,12 +177,12 @@ sub_s :: [CsMode] -> CsInsn -> [Stmt]
 
 sub_s modes inst =
   let (op1 : op2 : _ ) = x86operands inst
-      op1ast = getOperandAst op1
-      op2ast = getOperandAst op2
+      op1ast = getOperandAst modes op1
+      op2ast = getOperandAst modes op2
       sub_node = (BvsubExpr op1ast op2ast)
   in [
       inc_insn_ptr modes inst,
-      store_stmt op1 sub_node,
+      store_stmt modes op1 sub_node,
       af_s sub_node op1 op1ast op1ast,
       pf_s sub_node op1,
       sf_s sub_node op1,
@@ -191,18 +191,37 @@ sub_s modes inst =
       of_sub_s sub_node op1 op1ast op1ast
     ]
 
+-- Make list of operations in the IR that has the same semantics as the X86 cmp instruction
+
+cmp_s :: [CsMode] -> CsInsn -> [Stmt]
+
+cmp_s modes inst =
+  let (op1 : op2 : _ ) = x86operands inst
+      op1ast = getOperandAst modes op1
+      op2ast = SxExpr (convert ((size op1) - (size op2)) * 8) (getOperandAst modes op2)
+      cmp_node = (BvsubExpr op1ast op2ast)
+  in [
+      inc_insn_ptr modes inst,
+      af_s cmp_node op1 op1ast op1ast,
+      pf_s cmp_node op1,
+      sf_s cmp_node op1,
+      zf_s cmp_node op1,
+      cf_sub_s cmp_node op1 op1ast op1ast,
+      of_sub_s cmp_node op1 op1ast op1ast
+    ]
+
 -- Make list of operations in the IR that has the same semantics as the X86 xor instruction
 
 xor_s :: [CsMode] -> CsInsn -> [Stmt]
 
 xor_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
-      dst_ast = getOperandAst dst_op
-      src_ast = getOperandAst src_op
+      dst_ast = getOperandAst modes dst_op
+      src_ast = getOperandAst modes src_op
       xor_node = (BvxorExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
-      store_stmt dst_op xor_node,
+      store_stmt modes dst_op xor_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s xor_node dst_op,
       sf_s xor_node dst_op,
@@ -217,12 +236,12 @@ and_s :: [CsMode] -> CsInsn -> [Stmt]
 
 and_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
-      dst_ast = getOperandAst dst_op
-      src_ast = getOperandAst src_op
+      dst_ast = getOperandAst modes dst_op
+      src_ast = getOperandAst modes src_op
       and_node = (BvandExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
-      store_stmt dst_op and_node,
+      store_stmt modes dst_op and_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s and_node dst_op,
       sf_s and_node dst_op,
@@ -237,12 +256,12 @@ or_s :: [CsMode] -> CsInsn -> [Stmt]
 
 or_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
-      dst_ast = getOperandAst dst_op
-      src_ast = getOperandAst src_op
+      dst_ast = getOperandAst modes dst_op
+      src_ast = getOperandAst modes src_op
       and_node = (BvorExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
-      store_stmt dst_op and_node,
+      store_stmt modes dst_op and_node,
       set_flag X86FlagAf UndefinedExpr,
       pf_s and_node dst_op,
       sf_s and_node dst_op,
@@ -266,7 +285,7 @@ push_s modes inst =
   in [
       inc_insn_ptr modes inst,
       SetReg sp (BvsubExpr (GetReg sp) (BvExpr op_size (arch_size * 8))),
-      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size op1)) * 8) (getOperandAst op1))
+      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size op1)) * 8) (getOperandAst modes op1))
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
@@ -298,7 +317,7 @@ pop_s modes inst =
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
-    ++ [store_stmt op1 (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
+    ++ [store_stmt modes op1 (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
     ++ (includeIf (not (sp_base || sp_reg)) [SetReg sp (BvaddExpr (GetReg sp) delta_val)])
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
@@ -307,8 +326,8 @@ mov_s :: [CsMode] -> CsInsn -> [Stmt]
 
 mov_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
-      dst_ast = getOperandAst dst_op
-      src_ast = getOperandAst src_op
+      dst_ast = getOperandAst modes dst_op
+      src_ast = getOperandAst modes src_op
       dst_size_bit = (convert $ size dst_op) * 8
       -- Segment registers are defined as 32 or 64 bit vectors in order to
       -- avoid having to simulate the GDT. This definition allows users to
@@ -326,7 +345,7 @@ mov_s modes inst =
           _ -> False
   in
     [inc_insn_ptr modes inst,
-    store_stmt dst_op node]
+    store_stmt modes dst_op node]
     ++ includeIf undef
         [set_flag X86FlagAf UndefinedExpr,
         set_flag X86FlagPf UndefinedExpr,
@@ -341,7 +360,7 @@ jmp_s :: [CsMode] -> CsInsn -> [Stmt]
 
 jmp_s modes inst =
   let (src_op : _ ) = x86operands inst
-      src_ast = getOperandAst src_op
+      src_ast = getOperandAst modes src_op
   in [SetReg (get_insn_ptr modes) src_ast]
 
 -- Make a list of operations in the IR that has the same semantics as the X86 je instruction
@@ -350,7 +369,7 @@ je_s :: [CsMode] -> CsInsn -> [Stmt]
 
 je_s modes inst =
   let (src_op : _ ) = x86operands inst
-      src_ast = getOperandAst src_op
+      src_ast = getOperandAst modes src_op
   in [SetReg (get_insn_ptr modes)
       (IteExpr (EqualExpr (get_flag X86FlagZf) (BvExpr 1 1))
         src_ast

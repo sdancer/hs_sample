@@ -14,6 +14,7 @@ mmp modes a = (convert (address a), (case toEnum (fromIntegral (insnId a)) of
   X86InsAdd -> add_s
   X86InsMov -> mov_s
   X86InsSub -> sub_s
+  X86InsCmp -> cmp_s
   X86InsPush -> push_s
   X86InsPop -> pop_s
   X86InsXor -> xor_s
