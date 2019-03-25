@@ -48,7 +48,7 @@ flagToBit flag = case flag of
 
 -- A representation of a register as a list of indicies. Enables overlapping registers.
 
-type CompoundReg = [Int]
+type CompoundReg = (Int, Int)
 
 -- A map from X86Regs to locations in the register file
 
@@ -57,45 +57,45 @@ x86RegisterMap :: [(X86.X86Reg, CompoundReg)]
 x86RegisterMap = [
 -- 8-bit operands
 
-  (X86RegAh, [1..1]), (X86RegBh, [9..9]), (X86RegCh, [17..17]), (X86RegDh, [25..25]),
+  (X86RegAh, (1,1)), (X86RegBh, (9,9)), (X86RegCh, (17,17)), (X86RegDh, (25,25)),
 
-  (X86RegAl, [0..0]), (X86RegBl, [8..8]), (X86RegCl, [16..16]), (X86RegDl, [24..24]),
-  (X86RegDil, [32..32]), (X86RegSil, [40..40]), (X86RegBpl, [48..48]), (X86RegSpl, [56..56]),
-  (X86RegR8b, [64..64]), (X86RegR9b, [72..72]), (X86RegR10b, [80..80]), (X86RegR11b, [88..88]),
-  (X86RegR12b, [96..96]), (X86RegR13b, [104..104]), (X86RegR14b, [112..112]), (X86RegR15b, [120..120]),
+  (X86RegAl, (0,0)), (X86RegBl, (8,8)), (X86RegCl, (16,16)), (X86RegDl, (24,24)),
+  (X86RegDil, (32,32)), (X86RegSil, (40,40)), (X86RegBpl, (48,48)), (X86RegSpl, (56,56)),
+  (X86RegR8b, (64,64)), (X86RegR9b, (72,72)), (X86RegR10b, (80,80)), (X86RegR11b, (88,88)),
+  (X86RegR12b, (96,96)), (X86RegR13b, (104,104)), (X86RegR14b, (112,112)), (X86RegR15b, (120,120)),
 
 -- 16-bit operands
 
-  (X86RegAx, [0..1]), (X86RegBx, [8..9]), (X86RegCx, [16..17]), (X86RegDx, [24..25]),
-  (X86RegDi, [32..33]), (X86RegSi, [40..41]), (X86RegBp, [48..49]), (X86RegSp, [56..57]),
-  (X86RegR8w, [64..65]), (X86RegR9w, [72..73]), (X86RegR10w, [80..81]), (X86RegR11w, [88..89]),
-  (X86RegR12w, [96..97]), (X86RegR13w, [104..105]), (X86RegR14w, [112..113]), (X86RegR15w, [120..121]),
-  (X86RegIp, [184, 185]),
+  (X86RegAx, (0,1)), (X86RegBx, (8,9)), (X86RegCx, (16,17)), (X86RegDx, (24,25)),
+  (X86RegDi, (32,33)), (X86RegSi, (40,41)), (X86RegBp, (48,49)), (X86RegSp, (56,57)),
+  (X86RegR8w, (64,65)), (X86RegR9w, (72,73)), (X86RegR10w, (80,81)), (X86RegR11w, (88,89)),
+  (X86RegR12w, (96,97)), (X86RegR13w, (104,105)), (X86RegR14w, (112,113)), (X86RegR15w, (120,121)),
+  (X86RegIp, (184,185)),
 
 -- 32-bit operands
 
-  (X86RegEax, [0..3]), (X86RegEbx, [8..11]), (X86RegEcx, [16..19]), (X86RegEdx, [24..27]),
-  (X86RegEdi, [32..35]), (X86RegEsi, [40..43]), (X86RegEbp, [48..51]), (X86RegEsp, [56..59]),
-  (X86RegR8d, [64..67]), (X86RegR9d, [72..75]), (X86RegR10d, [80..83]), (X86RegR11d, [88..91]),
-  (X86RegR12d, [96..99]), (X86RegR13d, [104..107]), (X86RegR14d, [112..115]), (X86RegR15d, [120..123]),
-  (X86RegEip, [184, 187]),
+  (X86RegEax, (0,3)), (X86RegEbx, (8,11)), (X86RegEcx, (16,19)), (X86RegEdx, (24,27)),
+  (X86RegEdi, (32,35)), (X86RegEsi, (40,43)), (X86RegEbp, (48,51)), (X86RegEsp, (56,59)),
+  (X86RegR8d, (64,67)), (X86RegR9d, (72,75)), (X86RegR10d, (80,83)), (X86RegR11d, (88,91)),
+  (X86RegR12d, (96,99)), (X86RegR13d, (104,107)), (X86RegR14d, (112,115)), (X86RegR15d, (120,123)),
+  (X86RegEip, (184,187)),
 
 -- 64-bit operands
 
-  (X86RegRax, [0..7]), (X86RegRbx, [8..15]), (X86RegRcx, [16..23]), (X86RegRdx, [24..31]),
-  (X86RegRdi, [32..39]), (X86RegRsi, [40..47]), (X86RegRbp, [48..55]), (X86RegRsp, [56..63]),
-  (X86RegR8, [64..71]), (X86RegR9, [72..79]), (X86RegR10, [80..87]), (X86RegR11, [88..95]),
-  (X86RegR12, [96..103]), (X86RegR13, [104..111]), (X86RegR14, [112..119]), (X86RegR15, [120..127]),
-  (X86RegRip, [184, 191]),
+  (X86RegRax, (0,7)), (X86RegRbx, (8,15)), (X86RegRcx, (16,23)), (X86RegRdx, (24,31)),
+  (X86RegRdi, (32,39)), (X86RegRsi, (40,47)), (X86RegRbp, (48,55)), (X86RegRsp, (56,63)),
+  (X86RegR8, (64,71)), (X86RegR9, (72,79)), (X86RegR10, (80,87)), (X86RegR11, (88,95)),
+  (X86RegR12, (96,103)), (X86RegR13, (104,111)), (X86RegR14, (112,119)), (X86RegR15, (120,127)),
+  (X86RegRip, (184,191)),
 
 -- Segment Registers
 
-  (X86RegCs, [128..135]), (X86RegDs, [136..143]), (X86RegSs, [144..151]), (X86RegEs, [152..159]),
-  (X86RegFs, [160..167]), (X86RegGs, [168..175]),
+  (X86RegCs, (128,135)), (X86RegDs, (136,143)), (X86RegSs, (144,151)), (X86RegEs, (152,159)),
+  (X86RegFs, (160,167)), (X86RegGs, (168,175)),
 
 -- EFLAGS Register
 
-  (X86RegEflags, [176..183])]
+  (X86RegEflags, (176,183))]
 
 -- Convert an X86Reg to a CompoundReg
 
@@ -136,10 +136,10 @@ get_arch_size modes =
 
 getRegisterValue :: [Int] -> CompoundReg -> Int
 
-getRegisterValue regFile [] = 0
+getRegisterValue regFile (l, h) | l == h+1 = 0
 
-getRegisterValue regFile (b:bs) =
-  (regFile !! b) + (shift (getRegisterValue regFile bs) byte_size_bit)
+getRegisterValue regFile (l, h) =
+  (regFile !! l) + (shift (getRegisterValue regFile (l+1, h)) byte_size_bit)
 
 -- Replace the given index of the given list with the given value
 
@@ -153,10 +153,10 @@ replace (x:xs) idx val = x:(replace xs (idx - 1) val)
 
 update_reg_file :: [Int] -> CompoundReg -> Int -> [Int]
 
-update_reg_file regs [] _ = regs
+update_reg_file regs (l, h) _ | l == h+1 = regs
 
-update_reg_file regs (c:cs) val =
-  update_reg_file (replace regs c (val .&. ((shift 1 byte_size_bit) - 1))) cs
+update_reg_file regs (l, h) val =
+  update_reg_file (replace regs l (val .&. ((shift 1 byte_size_bit) - 1))) (l+1,h)
     (convert (shift ((convert val) :: Word) (-byte_size_bit)))
 
 -- Gets the specified bytes from memory
@@ -179,7 +179,8 @@ getRegisterValues regFile =
 
 isSubregisterOf :: CompoundReg -> CompoundReg -> Bool
 
-isSubregisterOf child parent = isSubsequenceOf child parent
+isSubregisterOf (childL, childH) (parentL, parentH) =
+  (parentL <= childL) && (parentH >= childH)
 
 -- Checks if the given register is a segment register
 
