@@ -10,22 +10,21 @@ import Hapstone.Internal.Capstone as Capstone
 -- the instruction memory.
 
 data ExecutionContext = ExecutionContext {
-  reg_file :: [Int],
-  def_regs :: [CompoundReg],
-  memory :: [(Int, Int)],
-  stmts :: [(Int, [Stmt])],
-  proc_modes :: [CsMode]
+  reg_file :: RegisterFile, -- Holds the contents and validity of the processor registers
+  memory :: [(Int, Int)], -- Holds the contents and validity of the processor memory
+  stmts :: [(Int, [Stmt])], -- Holds the instructions to be executed and their memory addresses
+  proc_modes :: [CsMode] -- Holds the processor information that effects interpretation of instructions
 } deriving (Eq, Show)
 
 -- Creates a context where the instruction pointer points to the first instruction, and
--- memory and the register file are uninitialized.
+-- memory and the register file are empty.
 
-uninitializedX86Context :: [CsMode] -> [(Int, [Stmt])] -> ExecutionContext
+basicX86Context :: [CsMode] -> [(Int, [Stmt])] -> ExecutionContext
 
-uninitializedX86Context modes stmts = ExecutionContext {
+basicX86Context modes stmts = ExecutionContext {
   memory = [],
   -- Point the instruction pointer to the first instruction on the list
-  reg_file = update_reg_file (replicate reg_file_bytes 0) (get_insn_ptr modes) (fst (head stmts)),
+  reg_file = update_reg_file emptyRegisterFile (get_insn_ptr modes) (fst (head stmts)),
   stmts = stmts,
   proc_modes = modes
 }

@@ -21,5 +21,5 @@ main = do
   case asm of
     Left _ -> print "error"
     -- Register eax will be some multiple of 10
-    Right b -> print (getRegisterValues (reg_file ((iter step 80) (uninitializedX86Context modes (liftAsm modes b)))))
+    Right b -> print (getRegisterValues (reg_file ((iter step 80) (basicX86Context modes (liftAsm modes b)))))
 

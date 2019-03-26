@@ -93,17 +93,7 @@ symEval cin (Load a b) =
 
 symEval cin expr = expr
 
-{- -- Assigns the given value to the given key. Adds a new association to the list if necessary
-
-assign :: Eq a => [(a,b)] -> (a, b) -> [(a, b)]
-
-assign [] (a, b) = [(a, b)]
-
-assign ((c, d) : es) (a, b) | c == a = (a, b) : es
-
-assign ((c, d) : es) (a, b) | c /= a = (c, d) : assign es (a, b)
-
-exec :: ExecutionContext -> Stmt -> ExecutionContext
+{-exec :: ExecutionContext -> Stmt -> ExecutionContext
 
 -- Executes a SetReg operation by setting each byte of the register separately
 
@@ -137,17 +127,5 @@ step cin =
       registerValue = getRegisterValue (reg_file cin) procInsnPtr
   in case lookup registerValue (stmts cin) of
     Nothing -> error "Instruction pointer has invalid value."
-    Just x -> foldl exec cin x
+    Just x -> foldl exec cin x-}
 
--- Applies the given function on the given argument a given number of times
-
-iter :: (a -> a) -> Int -> a -> a
-
-iter fun 0 x = x
-
-iter fun n x = iter fun (n - 1) (fun x)
-
--- by default all undefined regs are symbolic?
-symbolicEval :: ExecutionContext -> [Expr] -> ExecutionContext
-symbolicEval cin ast =
-          cin-}
