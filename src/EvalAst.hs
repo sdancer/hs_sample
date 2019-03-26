@@ -11,6 +11,7 @@ import Hapstone.Internal.Capstone as Capstone
 
 data ExecutionContext = ExecutionContext {
   reg_file :: [Int],
+  def_regs :: [CompoundReg],
   memory :: [(Int, Int)],
   stmts :: [(Int, [Stmt])],
   proc_modes :: [CsMode]
@@ -23,6 +24,7 @@ uninitializedX86Context :: [CsMode] -> [(Int, [Stmt])] -> ExecutionContext
 
 uninitializedX86Context modes stmts = ExecutionContext {
   memory = [],
+  -- Point the instruction pointer to the first instruction on the list
   reg_file = update_reg_file (replicate reg_file_bytes 0) (get_insn_ptr modes) (fst (head stmts)),
   stmts = stmts,
   proc_modes = modes
@@ -73,7 +75,10 @@ eval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 
 eval cin (Load a b) =
   let memStart = eval cin b
-    in getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
+      memVal = getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
+  in case memVal of
+    Nothing -> error "Read attempted on uninitialized memory."
+    Just x -> x
 
 -- Assigns the given value to the given key. Adds a new association to the list if necessary
 

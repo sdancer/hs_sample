@@ -209,14 +209,14 @@ update_reg_file regs (l, h) val =
 
 -- Gets the specified bytes from memory
 
-getMemoryValue :: [(Int, Int)] -> [Int] -> Int
+getMemoryValue :: [(Int, Int)] -> [Int] -> Maybe Int
 
-getMemoryValue _ [] = 0
+getMemoryValue _ [] = Just 0
 
 getMemoryValue mem (b:bs) =
-  case lookup b mem of
-    Nothing -> error "Read attempted on uninitialized memory."
-    Just x -> x + (shift (getMemoryValue mem bs) byte_size_bit)
+  case (lookup b mem, getMemoryValue mem bs) of
+    (Just x, Just y) -> Just (x + shift y byte_size_bit)
+    _ -> Nothing
 
 -- Get the register values from the register file
 

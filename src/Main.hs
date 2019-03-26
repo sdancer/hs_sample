@@ -1,10 +1,10 @@
 module Main where
 
-import qualified Data.ByteString            as BS
-import           System.IO
-import           Hapstone.Internal.Capstone as Capstone
+import System.IO
+import Hapstone.Internal.Capstone as Capstone
 import EvalAst
 import Ast
+import SymbolicEval
 
 import Lifter
 --import Simplify
