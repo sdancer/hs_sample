@@ -213,6 +213,25 @@ addRegister regs reg =
         if l2 <= h1 then (l1, max h1 h2):rst else (l2,h2):(l1,h1):rst
   in foldl tryCombine [(0,0)] (sort (reg:regs))
 
+-- Removes the given register from the given list taking care of overlaps
+
+removeRegister :: [CompoundReg] -> CompoundReg -> [CompoundReg]
+
+removeRegister regs (l1,h1) =
+  -- Tries to remove register 1 from register 2
+  let tryRemove (l2,h2) =
+        -- If register 1 overlaps and is to the left of register 2
+        if l1 <= l2 && l2 <= h1 && h1 <= h2 then [(h1,h2)]
+        -- If register 1 is completely contained by register 2
+        else if l2 <= l1 && h1 <= h2 then [(l2,l1),(h1,h2)]
+        -- If register 1 overlaps and is to the right of register 2
+        else if l2 <= l1 && l1 <= h2 && h2 <= h1 then [(l2,l1)]
+        -- If register 1 completely contains register 2
+        else if l1 <= l2 && h2 <= h1 then []
+        -- Otherwise the registers are disjoint
+        else [(l2,h2)]
+  in foldl (++) [] (map tryRemove regs)
+
 -- Updates the given register file by putting the given value in the given register
 
 update_reg_file :: RegisterFile -> CompoundReg -> Int -> RegisterFile

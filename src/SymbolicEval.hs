@@ -96,20 +96,30 @@ symEval cin (Load a b) =
 
 symEval cin expr = expr
 
-{-exec :: ExecutionContext -> Stmt -> ExecutionContext
+symExec :: ExecutionContext -> Stmt -> (ExecutionContext, Stmt)
 
--- Executes a SetReg operation by setting each byte of the register separately
+-- Symbolically executes a SetReg operation by either simplifying assignment value to a
+-- literal then putting it into the register file, or by undefining the target register
+-- to keep later statements symbolic.
 
-exec cin (SetReg bs a) = ExecutionContext {
-    reg_file = update_reg_file (reg_file cin) bs (symEval cin a),
+symExec cin (SetReg bs a) =
+  let c = symEval cin a
+  in (ExecutionContext {
+    reg_file =
+      (case c of
+        BvExpr a an -> update_reg_file (reg_file cin) bs a
+        _ -> (let treg_file = reg_file cin
+                  old_ranges = ranges treg_file
+                  tvalues = values treg_file
+              in RegisterFile {ranges = removeRegister old_ranges bs, values = tvalues})),
     memory = memory cin,
     stmts = stmts cin,
     proc_modes = proc_modes cin
-  }
+  }, SetReg bs c)
 
 -- Executes a Store operation by setting each byte of memory separately
 
-exec cin (Store n dst val) =
+{-exec cin (Store n dst val) =
   let updateMemory mem 0 _ _ = mem
       updateMemory mem c d v =
         updateMemory (assign mem (d, (v .&. ((2 ^ byte_size_bit) - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
@@ -118,17 +128,29 @@ exec cin (Store n dst val) =
     memory = updateMemory (memory cin) n (symEval cin dst) (symEval cin val),
     stmts = stmts cin,
     proc_modes = proc_modes cin
-  }
+  }-}
 
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
 
-step :: ExecutionContext -> ExecutionContext
+symStep :: ExecutionContext -> ExecutionContext
 
-step cin =
+symStep cin =
   let procInsnPtr = get_insn_ptr (proc_modes cin)
-      registerValue = getRegisterValue (reg_file cin) procInsnPtr
-  in case lookup registerValue (stmts cin) of
-    Nothing -> error "Instruction pointer has invalid value."
-    Just x -> foldl exec cin x-}
+  in case getRegisterValue (reg_file cin) procInsnPtr of
+    Nothing -> error "Instruction pointer has not yet been set."
+    Just registerValue ->
+      case lookup registerValue (stmts cin) of
+        Nothing -> error "Instruction pointer has invalid value."
+        Just x ->
+          let process ec [] ns = ExecutionContext {
+                reg_file = reg_file ec,
+                memory = memory ec,
+                proc_modes = proc_modes ec,
+                stmts = assign (stmts ec) (registerValue, reverse ns)
+              }
+              process ec (x:xs) ns =
+                let (nec, s) = symExec ec x
+                in process nec xs (s:ns)
+          in process cin x []
 
