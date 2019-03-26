@@ -133,24 +133,22 @@ symExec cin (SetReg bs a) =
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
 
-symStep :: ExecutionContext -> ExecutionContext
+symSteps :: ExecutionContext -> (ExecutionContext, [(Int, [Stmt])])
 
-symStep cin =
-  let procInsnPtr = get_insn_ptr (proc_modes cin)
-  in case getRegisterValue (reg_file cin) procInsnPtr of
-    Nothing -> error "Instruction pointer has not yet been set."
-    Just registerValue ->
-      case lookup registerValue (stmts cin) of
-        Nothing -> error "Instruction pointer has invalid value."
-        Just x ->
-          let process ec [] ns = ExecutionContext {
-                reg_file = reg_file ec,
-                memory = memory ec,
-                proc_modes = proc_modes ec,
-                stmts = assign (stmts ec) (registerValue, reverse ns)
-              }
-              process ec (x:xs) ns =
-                let (nec, s) = symExec ec x
-                in process nec xs (s:ns)
-          in process cin x []
+symSteps cin | stmts cin == [] = (cin, [])
+
+symSteps cin =
+    let x = snd (head (stmts cin)) in
+      let process ec [] ns = (ExecutionContext {
+            reg_file = reg_file ec,
+            memory = memory ec,
+            proc_modes = proc_modes ec,
+            stmts = tail (stmts ec)
+          }, (fst (head (stmts cin)), reverse ns))
+          process ec (x:xs) ns =
+            let (nec, s) = symExec ec x
+            in process nec xs (s:ns)
+          (fec, ent) = process cin x []
+          (ffec, ents) = symSteps fec
+      in (ffec, (ent:ents))
 
