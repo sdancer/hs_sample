@@ -9,25 +9,29 @@ import Util
 import Data.Word
 
 --x86 vs arm, etc?
-mmp :: [CsMode] -> CsInsn -> [Stmt]
-mmp modes a = case toEnum (fromIntegral (insnId a)) of
-  X86InsAdd -> add_s a
-  X86InsMov -> mov a
-  X86InsSub -> sub_s a
-  X86InsPush -> push_s modes a
-  X86InsPop -> pop_s modes a
-  X86InsXor -> xor_s a
-  X86InsAnd -> and_s a
-  X86InsOr -> or_s a
-  otherwise -> error ("Instruction " ++ mnemonic a ++ " not supported.")
+mmp :: [CsMode] -> CsInsn -> (Int, [Stmt])
+mmp modes a = (convert (address a), (case toEnum (fromIntegral (insnId a)) of
+  X86InsAdd -> add_s
+  X86InsMov -> mov_s
+  X86InsSub -> sub_s
+  X86InsCmp -> cmp_s
+  X86InsPush -> push_s
+  X86InsPop -> pop_s
+  X86InsXor -> xor_s
+  X86InsAnd -> and_s
+  X86InsOr -> or_s
+  X86InsJmp -> jmp_s
+  X86InsJe -> je_s
+  X86InsLea -> lea_s
+  otherwise -> error ("Instruction " ++ mnemonic a ++ " not supported.")) modes a)
 
-liftAsm :: [CsMode] -> [CsInsn] -> [[Stmt]]
+liftAsm :: [CsMode] -> [CsInsn] -> [(Int, [Stmt])]
 liftAsm modes buf = map (mmp modes) buf
 
 disasm_buf :: [CsMode] -> [Word8] -> IO (Either CsErr [CsInsn])
 disasm_buf modes buffer = disasmSimpleIO $ disasm modes buffer 0
 
-liftX86toAst :: [CsMode] -> [Word8] -> IO [[Stmt]]
+liftX86toAst :: [CsMode] -> [Word8] -> IO [(Int, [Stmt])]
 liftX86toAst modes input = do
     asm <- disasm_buf modes input
     return (case asm of
