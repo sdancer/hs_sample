@@ -25,27 +25,6 @@ data X86Flag =
   | X86FlagDf | X86FlagOf | X86FlagIopl | X86FlagNt | X86FlagRf | X86FlagVm | X86FlagAc
   | X86FlagVif | X86FlagVip | X86FlagId deriving (Eq, Show)
 
-flagToBit :: X86Flag -> (Int, Int)
-
-flagToBit flag = case flag of
-  X86FlagCf -> (0,0)
-  X86FlagPf -> (2,2)
-  X86FlagAf -> (4,4)
-  X86FlagZf -> (6,6)
-  X86FlagSf -> (7,7)
-  X86FlagTf -> (8,8)
-  X86FlagIf -> (9,9)
-  X86FlagDf -> (10,10)
-  X86FlagOf -> (11,11)
-  X86FlagIopl -> (12,13)
-  X86FlagNt -> (14,14)
-  X86FlagRf -> (16,16)
-  X86FlagVm -> (17,17)
-  X86FlagAc -> (18,18)
-  X86FlagVif -> (19,19)
-  X86FlagVip -> (20,20)
-  X86FlagId -> (21,21)
-
 -- A representation of a register as a list of indicies. Enables overlapping registers.
 
 type CompoundReg = (Int, Int)
@@ -57,68 +36,89 @@ x86RegisterMap :: [(X86.X86Reg, CompoundReg)]
 x86RegisterMap = [
 -- 8-bit operands
 
-  (X86RegAh, (1,1)), (X86RegBh, (9,9)), (X86RegCh, (17,17)), (X86RegDh, (25,25)),
+  (X86RegAh, b(1,1)), (X86RegBh, b(9,9)), (X86RegCh, b(17,17)), (X86RegDh, b(25,25)),
 
-  (X86RegAl, (0,0)), (X86RegBl, (8,8)), (X86RegCl, (16,16)), (X86RegDl, (24,24)),
-  (X86RegDil, (32,32)), (X86RegSil, (40,40)), (X86RegBpl, (48,48)), (X86RegSpl, (56,56)),
-  (X86RegR8b, (64,64)), (X86RegR9b, (72,72)), (X86RegR10b, (80,80)), (X86RegR11b, (88,88)),
-  (X86RegR12b, (96,96)), (X86RegR13b, (104,104)), (X86RegR14b, (112,112)), (X86RegR15b, (120,120)),
+  (X86RegAl, b(0,0)), (X86RegBl, b(8,8)), (X86RegCl, b(16,16)), (X86RegDl, b(24,24)),
+  (X86RegDil, b(32,32)), (X86RegSil, b(40,40)), (X86RegBpl, b(48,48)), (X86RegSpl, b(56,56)),
+  (X86RegR8b, b(64,64)), (X86RegR9b, b(72,72)), (X86RegR10b, b(80,80)), (X86RegR11b, b(88,88)),
+  (X86RegR12b, b(96,96)), (X86RegR13b, b(104,104)), (X86RegR14b, b(112,112)), (X86RegR15b, b(120,120)),
 
 -- 16-bit operands
 
-  (X86RegAx, (0,1)), (X86RegBx, (8,9)), (X86RegCx, (16,17)), (X86RegDx, (24,25)),
-  (X86RegDi, (32,33)), (X86RegSi, (40,41)), (X86RegBp, (48,49)), (X86RegSp, (56,57)),
-  (X86RegR8w, (64,65)), (X86RegR9w, (72,73)), (X86RegR10w, (80,81)), (X86RegR11w, (88,89)),
-  (X86RegR12w, (96,97)), (X86RegR13w, (104,105)), (X86RegR14w, (112,113)), (X86RegR15w, (120,121)),
-  (X86RegIp, (184,185)),
+  (X86RegAx, b(0,1)), (X86RegBx, b(8,9)), (X86RegCx, b(16,17)), (X86RegDx, b(24,25)),
+  (X86RegDi, b(32,33)), (X86RegSi, b(40,41)), (X86RegBp, b(48,49)), (X86RegSp, b(56,57)),
+  (X86RegR8w, b(64,65)), (X86RegR9w, b(72,73)), (X86RegR10w, b(80,81)), (X86RegR11w, b(88,89)),
+  (X86RegR12w, b(96,97)), (X86RegR13w, b(104,105)), (X86RegR14w, b(112,113)), (X86RegR15w, b(120,121)),
+  (X86RegIp, b(184,185)),
 
 -- 32-bit operands
 
-  (X86RegEax, (0,3)), (X86RegEbx, (8,11)), (X86RegEcx, (16,19)), (X86RegEdx, (24,27)),
-  (X86RegEdi, (32,35)), (X86RegEsi, (40,43)), (X86RegEbp, (48,51)), (X86RegEsp, (56,59)),
-  (X86RegR8d, (64,67)), (X86RegR9d, (72,75)), (X86RegR10d, (80,83)), (X86RegR11d, (88,91)),
-  (X86RegR12d, (96,99)), (X86RegR13d, (104,107)), (X86RegR14d, (112,115)), (X86RegR15d, (120,123)),
-  (X86RegEip, (184,187)),
+  (X86RegEax, b(0,3)), (X86RegEbx, b(8,11)), (X86RegEcx, b(16,19)), (X86RegEdx, b(24,27)),
+  (X86RegEdi, b(32,35)), (X86RegEsi, b(40,43)), (X86RegEbp, b(48,51)), (X86RegEsp, b(56,59)),
+  (X86RegR8d, b(64,67)), (X86RegR9d, b(72,75)), (X86RegR10d, b(80,83)), (X86RegR11d, b(88,91)),
+  (X86RegR12d, b(96,99)), (X86RegR13d, b(104,107)), (X86RegR14d, b(112,115)), (X86RegR15d, b(120,123)),
+  (X86RegEip, b(184,187)),
 
 -- 64-bit operands
 
-  (X86RegRax, (0,7)), (X86RegRbx, (8,15)), (X86RegRcx, (16,23)), (X86RegRdx, (24,31)),
-  (X86RegRdi, (32,39)), (X86RegRsi, (40,47)), (X86RegRbp, (48,55)), (X86RegRsp, (56,63)),
-  (X86RegR8, (64,71)), (X86RegR9, (72,79)), (X86RegR10, (80,87)), (X86RegR11, (88,95)),
-  (X86RegR12, (96,103)), (X86RegR13, (104,111)), (X86RegR14, (112,119)), (X86RegR15, (120,127)),
-  (X86RegRip, (184,191)),
+  (X86RegRax, b(0,7)), (X86RegRbx, b(8,15)), (X86RegRcx, b(16,23)), (X86RegRdx, b(24,31)),
+  (X86RegRdi, b(32,39)), (X86RegRsi, b(40,47)), (X86RegRbp, b(48,55)), (X86RegRsp, b(56,63)),
+  (X86RegR8, b(64,71)), (X86RegR9, b(72,79)), (X86RegR10, b(80,87)), (X86RegR11, b(88,95)),
+  (X86RegR12, b(96,103)), (X86RegR13, b(104,111)), (X86RegR14, b(112,119)), (X86RegR15, b(120,127)),
+  (X86RegRip, b(184,191)),
 
 -- Segment Registers
 
-  (X86RegCs, (128,135)), (X86RegDs, (136,143)), (X86RegSs, (144,151)), (X86RegEs, (152,159)),
-  (X86RegFs, (160,167)), (X86RegGs, (168,175)),
+  (X86RegCs, b(128,135)), (X86RegDs, b(136,143)), (X86RegSs, b(144,151)), (X86RegEs, b(152,159)),
+  (X86RegFs, b(160,167)), (X86RegGs, b(168,175))
 
 -- EFLAGS Register
 
-  (X86RegEflags, (176,183))]
+  {-,(X86RegEflags, b(176,183))-}] where b(l,h) = (l*byte_size_bit,h*byte_size_bit)
 
 -- Convert an X86Reg to a CompoundReg
 
-compoundReg :: X86.X86Reg -> CompoundReg
+fromX86Reg :: X86.X86Reg -> CompoundReg
 
-compoundReg reg = case lookup reg x86RegisterMap of
+fromX86Reg reg = case lookup reg x86RegisterMap of
   Nothing -> error "X86 register could not be found in map."
+  Just x -> x
+
+-- A map from X86Flags to locations in the register file
+
+x86FlagMap :: [(X86Flag, CompoundReg)]
+
+x86FlagMap = [(X86FlagCf, c(176,0,0)), (X86FlagPf, c(176,2,2)),
+  (X86FlagAf, c(176,4,4)), (X86FlagZf, c(176,6,6)), (X86FlagSf, c(176,7,7)),
+  (X86FlagTf, c(176,8,8)), (X86FlagIf, c(176,9,9)), (X86FlagDf, c(176,10,10)),
+  (X86FlagOf, c(176,11,11)), (X86FlagIopl, c(176,12,13)), (X86FlagNt, c(176,14,14)),
+  (X86FlagRf, c(176,16,16)), (X86FlagVm, c(176,17,17)), (X86FlagAc, c(176,18,18)),
+  (X86FlagVif, c(176,19,19)), (X86FlagVip, c(176,20,20)), (X86FlagId, c(176,21,21))]
+  
+  where c(b,l,h) = (b*byte_size_bit+l,b*byte_size_bit+h)
+
+-- Convert an X86Reg to a CompoundReg
+
+fromX86Flag :: X86Flag -> CompoundReg
+
+fromX86Flag reg = case lookup reg x86FlagMap of
+  Nothing -> error "X86 flag could not be found in map."
   Just x -> x
 
 -- Gets the size of the given register in bits
 
 getRegSize :: CompoundReg -> Int
 
-getRegSize (l, h) = (h - l) * 8
+getRegSize (l, h) = h - l
 
 -- Gets the stack register for the given processor mode
 
 get_stack_reg :: [CsMode] -> CompoundReg
 
 get_stack_reg modes =
-  if elem CsMode16 modes then compoundReg X86RegSp
-  else if elem CsMode32 modes then compoundReg X86RegEsp
-  else if elem CsMode64 modes then compoundReg X86RegRsp
+  if elem CsMode16 modes then fromX86Reg X86RegSp
+  else if elem CsMode32 modes then fromX86Reg X86RegEsp
+  else if elem CsMode64 modes then fromX86Reg X86RegRsp
   else error "Processor modes underspecified."
 
 -- Gets the instruction pointer for the given processor mode
@@ -126,9 +126,9 @@ get_stack_reg modes =
 get_insn_ptr :: [CsMode] -> CompoundReg
 
 get_insn_ptr modes =
-  if elem CsMode16 modes then compoundReg X86RegIp
-  else if elem CsMode32 modes then compoundReg X86RegEip
-  else if elem CsMode64 modes then compoundReg X86RegRip
+  if elem CsMode16 modes then fromX86Reg X86RegIp
+  else if elem CsMode32 modes then fromX86Reg X86RegEip
+  else if elem CsMode64 modes then fromX86Reg X86RegRip
   else error "Processor modes underspecified."
 
 -- Gets the architecture size for the given processor mode
@@ -141,14 +141,32 @@ get_arch_size modes =
   else if elem CsMode64 modes then 8
   else error "Processor modes underspecified."
 
+-- Get the given bit of the integer
+
+getBit :: Int -> Int -> Int
+
+getBit value bit = if testBit value bit then 1 else 0
+
 -- Gets the value of the specified compound register from the register file
 
 getRegisterValue :: [Int] -> CompoundReg -> Int
 
-getRegisterValue regFile (l, h) | l == h+1 = 0
+getRegisterValue regFile (l, h) | l > h = 0
+
+-- If the register's bits are multiples of byte_size_bit, access them using a list index
+
+getRegisterValue regFile (l, h) | (mod l byte_size_bit == 0) && (mod h byte_size_bit == 0) =
+  let l_byte = div l byte_size_bit
+      upper_bytes = getRegisterValue regFile (l+byte_size_bit, h)
+  in (regFile !! l_byte) + shift upper_bytes byte_size_bit
+
+-- Otherwise get the register value from the register file one bit at a time
 
 getRegisterValue regFile (l, h) =
-  (regFile !! l) + (shift (getRegisterValue regFile (l+1, h)) byte_size_bit)
+  let l_byte = div l byte_size_bit
+      l_bit = mod l byte_size_bit
+      upper_bits = getRegisterValue regFile (l+1, h)
+  in getBit (regFile !! l_byte) l_bit + shift upper_bits 1
 
 -- Replace the given index of the given list with the given value
 
@@ -158,15 +176,36 @@ replace (_:xs) 0 val = val:xs
 
 replace (x:xs) idx val = x:(replace xs (idx - 1) val)
 
+-- Set the given bit of the integer to the given value
+
+assignBit :: Int -> Int -> Int -> Int
+
+assignBit value bit state =
+  (value .&. (complement (shift 1 bit))) .|. (shift state bit)
+
 -- Updates the given register file by putting the given value in the given register
 
 update_reg_file :: [Int] -> CompoundReg -> Int -> [Int]
 
-update_reg_file regs (l, h) _ | l == h+1 = regs
+update_reg_file regs (l, h) _ | l > h = regs
+
+-- If the register's bits are multiples of byte_size_bit, access them using a list index
+
+update_reg_file regs (l, h) val | (mod l byte_size_bit == 0) && (mod h byte_size_bit == 0) =
+  let l_byte = div l byte_size_bit
+      val_byte0 = val .&. (bit byte_size_bit - 1)
+      upper_bytes = convert (shift ((convert val) :: Word) (-byte_size_bit))
+  in update_reg_file (replace regs l_byte val_byte0) (l+byte_size_bit,h) upper_bytes
+
+-- Otherwise put the given value into the register file one bit at a time
 
 update_reg_file regs (l, h) val =
-  update_reg_file (replace regs l (val .&. ((shift 1 byte_size_bit) - 1))) (l+1,h)
-    (convert (shift ((convert val) :: Word) (-byte_size_bit)))
+  let l_byte = div l byte_size_bit
+      l_rounded = l_byte * byte_size_bit
+      effective_reg = (l_rounded, l_rounded + byte_size_bit)
+      current_val = getRegisterValue regs effective_reg
+      new_val = assignBit current_val (mod l byte_size_bit) (val .&. 1)
+  in update_reg_file (replace regs l_byte new_val) (l+1,h) (shift val (-1))
 
 -- Gets the specified bytes from memory
 
