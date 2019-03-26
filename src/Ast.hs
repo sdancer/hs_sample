@@ -166,24 +166,28 @@ isRegisterDefined regFile reg = or (map (isSubregisterOf reg) (ranges regFile))
 
 -- Gets the value of the specified compound register from the register file
 
-getRegisterValue :: RegisterFile -> CompoundReg -> Int
+getRegisterValue :: RegisterFile -> CompoundReg -> Maybe Int
 
-getRegisterValue regFile (l, h) | l == h = 0
+getRegisterValue regFile (l, h) | l == h = Just 0
 
 -- If the register's bits are multiples of byte_size_bit, access them using a list index
 
 getRegisterValue regFile (l, h) | isRegisterDefined regFile (l, h) && (mod l byte_size_bit == 0) && (mod h byte_size_bit == 0) =
   let l_byte = div l byte_size_bit
-      upper_bytes = getRegisterValue regFile (l+byte_size_bit, h)
-  in (values regFile !! l_byte) + shift upper_bytes byte_size_bit
+      Just upper_bytes = getRegisterValue regFile (l+byte_size_bit, h)
+  in Just ((values regFile !! l_byte) + shift upper_bytes byte_size_bit)
 
 -- Otherwise get the register value from the register file one bit at a time
 
 getRegisterValue regFile (l, h) | isRegisterDefined regFile (l, h) =
   let l_byte = div l byte_size_bit
       l_bit = mod l byte_size_bit
-      upper_bits = getRegisterValue regFile (l+1, h)
-  in getBit (values regFile !! l_byte) l_bit + shift upper_bits 1
+      Just upper_bits = getRegisterValue regFile (l+1, h)
+  in Just (getBit (values regFile !! l_byte) l_bit + shift upper_bits 1)
+
+-- Otherwise the desired register has not yet been defined
+
+getRegisterValue _ _ = Nothing
 
 -- Replace the given index of the given list with the given value
 

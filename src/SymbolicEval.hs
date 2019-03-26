@@ -80,15 +80,18 @@ symEval cin (ExtractExpr a b c) =
     (c) -> ExtractExpr a b c
 
 symEval cin (GetReg bs) =
-  BvExpr (getRegisterValue (reg_file cin) bs) (getRegSize bs)
+  let regVal = getRegisterValue (reg_file cin) bs
+  in case regVal of
+    Just x -> BvExpr x (getRegSize bs)
+    Nothing -> GetReg bs
 
 symEval cin (Load a b) =
   case (symEval cin b) of
     (BvExpr memStart bn) ->
       let memVal = getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
-        in case memVal of
-          Just x -> BvExpr x a
-          Nothing -> Load a (BvExpr memStart bn)
+      in case memVal of
+        Just x -> BvExpr x a
+        Nothing -> Load a (BvExpr memStart bn)
     (b) -> Load a b
 
 symEval cin expr = expr

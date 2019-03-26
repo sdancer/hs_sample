@@ -70,7 +70,10 @@ eval cin (ReplaceExpr a b c d) =
 
 eval cin (ExtractExpr a b c) = (shift (eval cin c) (-b)) .&. ((2 ^ (a + 1 - b)) - 1)
 
-eval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
+eval cin (GetReg bs) =
+  case getRegisterValue (reg_file cin) bs of
+    Nothing -> error "Read attempted on uninitialized memory."
+    Just x -> x
 
 eval cin (Load a b) =
   let memStart = eval cin b
@@ -120,10 +123,12 @@ step :: ExecutionContext -> ExecutionContext
 
 step cin =
   let procInsnPtr = get_insn_ptr (proc_modes cin)
-      registerValue = getRegisterValue (reg_file cin) procInsnPtr
-  in case lookup registerValue (stmts cin) of
-    Nothing -> error "Instruction pointer has invalid value."
-    Just x -> foldl exec cin x
+  in case getRegisterValue (reg_file cin) procInsnPtr of
+    Nothing -> error "Instruction pointer has not yet been set."
+    Just registerValue ->
+      case lookup registerValue (stmts cin) of
+        Nothing -> error "Instruction pointer has invalid value."
+        Just x -> foldl exec cin x
 
 -- Applies the given function on the given argument a given number of times
 
