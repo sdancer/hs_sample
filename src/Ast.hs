@@ -206,7 +206,7 @@ addRegister :: [CompoundReg] -> CompoundReg -> [CompoundReg]
 
 addRegister regs reg =
   let tryCombine ((l1,h1):rst) (l2,h2) =
-        if l2 <= h1+1 then (l1, max h1 h2):rst else (l2,h2):(l1,h1):rst
+        if l2 <= h1 then (l1, max h1 h2):rst else (l2,h2):(l1,h1):rst
   in foldl tryCombine [(0,0)] (sort (reg:regs))
 
 -- Updates the given register file by putting the given value in the given register
