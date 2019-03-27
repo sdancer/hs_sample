@@ -10,20 +10,21 @@ import Hapstone.Internal.Capstone as Capstone
 -- the instruction memory.
 
 data ExecutionContext = ExecutionContext {
-  reg_file :: [Int],
-  memory :: [(Int, Int)],
-  stmts :: [(Int, [Stmt])],
-  proc_modes :: [CsMode]
+  reg_file :: RegisterFile, -- Holds the contents and validity of the processor registers
+  memory :: [(Int, Int)], -- Holds the contents and validity of the processor memory
+  stmts :: [(Int, [Stmt])], -- Holds the instructions to be executed and their memory addresses
+  proc_modes :: [CsMode] -- Holds the processor information that effects interpretation of instructions
 } deriving (Eq, Show)
 
 -- Creates a context where the instruction pointer points to the first instruction, and
--- memory and the register file are uninitialized.
+-- memory and the register file are empty.
 
-uninitializedX86Context :: [CsMode] -> [(Int, [Stmt])] -> ExecutionContext
+basicX86Context :: [CsMode] -> [(Int, [Stmt])] -> ExecutionContext
 
-uninitializedX86Context modes stmts = ExecutionContext {
+basicX86Context modes stmts = ExecutionContext {
   memory = [],
-  reg_file = update_reg_file (replicate reg_file_bytes 0) (get_insn_ptr modes) (fst (head stmts)),
+  -- Point the instruction pointer to the first instruction on the list
+  reg_file = update_reg_file emptyRegisterFile (get_insn_ptr modes) (fst (head stmts)),
   stmts = stmts,
   proc_modes = modes
 }
@@ -69,11 +70,17 @@ eval cin (ReplaceExpr a b c d) =
 
 eval cin (ExtractExpr a b c) = (shift (eval cin c) (-b)) .&. ((2 ^ (a + 1 - b)) - 1)
 
-eval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
+eval cin (GetReg bs) =
+  case getRegisterValue (reg_file cin) bs of
+    Nothing -> error "Read attempted on uninitialized memory."
+    Just x -> x
 
 eval cin (Load a b) =
   let memStart = eval cin b
-    in getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
+      memVal = getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
+  in case memVal of
+    Nothing -> error "Read attempted on uninitialized memory."
+    Just x -> x
 
 -- Assigns the given value to the given key. Adds a new association to the list if necessary
 
@@ -116,10 +123,12 @@ step :: ExecutionContext -> ExecutionContext
 
 step cin =
   let procInsnPtr = get_insn_ptr (proc_modes cin)
-      registerValue = getRegisterValue (reg_file cin) procInsnPtr
-  in case lookup registerValue (stmts cin) of
-    Nothing -> error "Instruction pointer has invalid value."
-    Just x -> foldl exec cin x
+  in case getRegisterValue (reg_file cin) procInsnPtr of
+    Nothing -> error "Instruction pointer has not yet been set."
+    Just registerValue ->
+      case lookup registerValue (stmts cin) of
+        Nothing -> error "Instruction pointer has invalid value."
+        Just x -> foldl exec cin x
 
 -- Applies the given function on the given argument a given number of times
 
