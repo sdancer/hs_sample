@@ -18,7 +18,7 @@ import EvalAst
 
 
 test_block_one =
-  testCase "symbolic" $ do
+  testCase "one block" $ do
       l <- liftX86toAst [Capstone.CsMode32] input
       let context = basicX86Context [Capstone.CsMode32] l
       (symSteps context) @?= (context, [])
