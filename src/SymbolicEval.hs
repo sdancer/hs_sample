@@ -120,18 +120,22 @@ symExec cin (SetReg bs a) =
     proc_modes = proc_modes cin
   }, SetReg bs c)
 
--- Executes a Store operation by setting each byte of memory separately
 
-{-exec cin (Store n dst val) =
-  let updateMemory mem 0 _ _ = mem
-      updateMemory mem c d v =
-        updateMemory (assign mem (d, (v .&. ((2 ^ byte_size_bit) - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
-  in ExecutionContext {
-    reg_file = reg_file cin,
-    memory = updateMemory (memory cin) n (symEval cin dst) (symEval cin val),
-    stmts = stmts cin,
-    proc_modes = proc_modes cin
-  }-}
+symExec cin (Store n dst val) =
+  let pval = symEval cin val
+      pdest = symEval cin dst
+  in
+    case pval of
+      _ -> error $ "store on symbolic evaluation not implemented"
+  --     updateMemory mem 0 _ _ = mem
+  --     updateMemory mem c d v =
+  --       updateMemory (assign mem (d, (v .&. ((2 ^ byte_size_bit) - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
+  -- in ExecutionContext {
+  --   reg_file = reg_file cin,
+  --   memory = updateMemory (memory cin) n (symEval cin dst) (symEval cin val),
+  --   stmts = stmts cin,
+  --   proc_modes = proc_modes cin
+  -- }
 
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
