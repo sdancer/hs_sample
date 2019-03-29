@@ -14,7 +14,7 @@ library rekitlib
  Exposed-modules:
             Ast
             , Asm
-            , Symbolic
+            , SymbolicEval
             , Util
             , Lifter
             , AstContext

@@ -6,11 +6,15 @@ import Test.Tasty.HUnit
 import Lifter
 import Ast
 import Hapstone.Internal.X86
+import Hapstone.Internal.Capstone as Capstone
 
 import Data.Word
 
 import AstTools
+import SymbolicEval
 
+import Lifter
+import EvalAst
 
 safeHead :: [a] -> Maybe a
 safeHead []    = Nothing
@@ -20,35 +24,27 @@ safeHead (x:_) = Just x
 main :: IO ()
 main = defaultMain $
   testGroup "Lifter" [
-    test_lift
-    , test_simplify
-    , test_eval
+    test_lift,
+    test_sym
   ]
-
 
 test_lift =
   testCase "simple lift buf" $ do
-    l <- liftX86toAst [0xB8, 0x01, 0x00, 0x00, 0x00, 0xB8, 0x02, 0x00, 0x00, 0x00]
-    l @?= [
-            [SetReg (X86Reg X86RegEax) (BvNode 1 32)]
-            ,[SetReg (X86Reg X86RegEax) (BvNode 2 32)]
-          ]
+    -- asm <- disasm_buf [Capstone.CsMode32] [0xB8, 0x01, 0x00, 0x00, 0x00, 0xB8, 0x02, 0x00, 0x00, 0x00]
+    -- l <- liftAsm [Capstone.CsMode32] asm
+    l <- liftX86toAst [Capstone.CsMode32] [0xB8, 0x01, 0x00, 0x00, 0x00, 0xB8, 0x02, 0x00, 0x00, 0x00]
+    l @?= [(0,[SetReg (1472,1504) (BvExpr 5 4),SetReg (0,32) (BvExpr 1 32)]),
+      (5,[SetReg (1472,1504) (BvExpr 10 4),SetReg (0,32) (BvExpr 2 32)])]
 
-test_simplify =
-  testCase "asm: \n mov eax, 1 \n add eax, 5 \n sub eax, 3" $ do
-        l1 <- liftX86toAst [0xB8, 0x01, 0x00, 0x00, 0x00, 0x83, 0xC0, 0x05, 0x83, 0xE8, 0x03]
-        (filter_out_flags l1) @?= [
-          [SetReg (X86Reg X86RegEax) (BvNode 1 32)],
-          [SetReg (X86Reg X86RegEax) (BvaddNode (GetReg (X86Reg X86RegEax)) (BvNode 5 32))],
-          [AssertNode "sub"]
-          ]
 
-test_eval =
-  testCase "eval" $ do
-        l1 <- liftX86toAst [0xB8, 0x01, 0x00, 0x00, 0x00, 0x83, 0xC0, 0x05, 0x83, 0xE8, 0x03]
-        --after running this code on a symbolic context, eax == 3
-        (filter_out_flags l1) @?= [
-          [SetReg (X86Reg X86RegEax) (BvNode 1 32)],
-          [SetReg (X86Reg X86RegEax) (BvaddNode (GetReg (X86Reg X86RegEax)) (BvNode 5 32))],
-          [AssertNode "sub"]
-          ]
+test_sym =
+  testCase "symbolic" $ do
+      let input = [0xB8, 0x00, 0x00, 0x00, 0x00, -- mov eax,0x0 becomes SetReg (0,32) (BvExpr 0 32)
+                  0x83, 0xC0, 0x0A, -- add eax,0xa becomes SetReg (0,32) (BvExpr 10 32)
+                  0x83, 0xC0, 0x0F, -- add eax,0xf becomes SetReg (0,32) (BvExpr 25 32)
+                  0x83, 0xE8, 0x03, -- sub eax,0x3 becomes SetReg (0,32) (BvExpr 22 32)
+                  0x89, 0xD8, -- mov eax,ebx becomes SetReg (0,32) (GetReg (64,96))
+                  0x83, 0xC0, 0x14] -- add eax,0x14 becomes SetReg (0,32) (BvaddExpr (GetReg (0,32)) (BvExpr 20 32))
+      l <- liftX86toAst [Capstone.CsMode32] input
+      let context = basicX86Context [Capstone.CsMode32] l
+      (symSteps context) @?= context
