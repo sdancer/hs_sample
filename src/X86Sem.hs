@@ -397,6 +397,7 @@ mov_s modes inst =
         SetReg (fromX86Flag X86FlagCf) UndefinedExpr,
         SetReg (fromX86Flag X86FlagOf) UndefinedExpr]
 
+
 -- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
 
 jmp_s :: [CsMode] -> CsInsn -> [Stmt]
@@ -451,4 +452,3 @@ x86operands inst =
   let arch2 = getCsX86arch (Capstone.detail inst)
       ops = maybe [] operands arch2
   in ops
-    

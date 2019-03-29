@@ -1,8 +1,29 @@
-module OneBlock where
+module TestBlockOne where
 
+import Test.Tasty
+import Test.Tasty.HUnit
+
+import Lifter
 import Ast
+import Hapstone.Internal.X86
+import Hapstone.Internal.Capstone as Capstone
 
-let input2 = [
+import Data.Word
+
+import AstTools
+import SymbolicEval
+
+import Lifter
+import EvalAst
+
+
+test_block_one =
+  testCase "symbolic" $ do
+      l <- liftX86toAst [Capstone.CsMode32] input
+      let context = basicX86Context [Capstone.CsMode32] l
+      (symSteps context) @?= (context, [])
+
+input = [
       190, 0, 0, 0, 0, 137, 239, 129, 230, 36, 0, 0, 0, 137, 238, 33, 210, 129, 199, 102, 0, 0, 0, 186, 0, 0, 0, 0, 184, 0, 0, 0,
       0, 37, 0, 0, 0, 128, 129, 198, 0, 0, 0, 0, 187, 0, 2, 0, 0, 9, 203, 139, 54, 185, 10, 0, 0, 0, 139, 63, 1, 211, 137, 200,
       129, 234, 4, 0, 0, 0, 129, 199, 0, 0, 0, 0, 41, 200, 33, 209, 33, 208, 15, 183, 63, 129, 193, 255, 255, 255, 127, 129, 193, 1, 0, 0,

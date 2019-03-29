@@ -85,6 +85,9 @@ symEval cin (GetReg bs) =
     Just x -> BvExpr x (getRegSize bs)
     Nothing -> GetReg bs
 
+-- add ro memory (raise exception if written)
+-- add symbolic addressed memory (example stack, no concrete values mapping references)
+
 symEval cin (Load a b) =
   case (symEval cin b) of
     (BvExpr memStart bn) ->
@@ -151,4 +154,3 @@ symSteps cin =
           (fec, ent) = process cin x []
           (ffec, ents) = symSteps fec
       in (ffec, (ent:ents))
-

@@ -13,6 +13,7 @@ mmp :: [CsMode] -> CsInsn -> (Int, [Stmt])
 mmp modes a = (convert (address a), (case toEnum (fromIntegral (insnId a)) of
   X86InsAdd -> add_s
   X86InsMov -> mov_s
+  X86InsMovzx -> mov_s --will this trigger bits missaling?
   X86InsSub -> sub_s
   X86InsCmp -> cmp_s
   X86InsPush -> push_s
@@ -38,4 +39,3 @@ liftX86toAst modes input = do
     return (case asm of
       Left _ -> error "Error in disassembling machine code."
       Right b -> liftAsm modes b)
-

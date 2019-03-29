@@ -16,16 +16,14 @@ import SymbolicEval
 import Lifter
 import EvalAst
 
-safeHead :: [a] -> Maybe a
-safeHead []    = Nothing
-safeHead (x:_) = Just x
-
+import TestBlockOne (test_block_one)
 
 main :: IO ()
 main = defaultMain $
   testGroup "Lifter" [
-    test_lift,
-    test_sym
+      test_lift
+    , test_sym
+    , test_block_one
   ]
 
 test_lift =
