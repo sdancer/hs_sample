@@ -107,35 +107,28 @@ symExec :: ExecutionContext -> Stmt -> (ExecutionContext, Stmt)
 
 symExec cin (SetReg bs a) =
   let c = symEval cin a
-  in (ExecutionContext {
-    reg_file =
-      (case c of
+      nreg = case c of
         BvExpr a an -> update_reg_file (reg_file cin) bs a
-        _ -> (let treg_file = reg_file cin
-                  old_ranges = ranges treg_file
-                  tvalues = values treg_file
-              in RegisterFile {ranges = removeRegister old_ranges bs, values = tvalues})),
-    memory = memory cin,
-    stmts = stmts cin,
-    proc_modes = proc_modes cin
-  }, SetReg bs c)
+        _ -> let treg_file = reg_file cin
+                 old_ranges = ranges treg_file
+                 tvalues = values treg_file
+              in RegisterFile {ranges = removeRegister old_ranges bs, values = tvalues}
+  in (cin { reg_file = nreg }, SetReg bs c)
 
 
 symExec cin (Store n dst val) =
-  let pval = symEval cin val
-      pdest = symEval cin dst
+  let pdest = symEval cin dst
+      pval = symEval cin val
+      bytes bs = shift bs (0-3)
   in
-    case pval of
-      _ -> error $ "store on symbolic evaluation not implemented"
-  --     updateMemory mem 0 _ _ = mem
-  --     updateMemory mem c d v =
-  --       updateMemory (assign mem (d, (v .&. ((2 ^ byte_size_bit) - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
-  -- in ExecutionContext {
-  --   reg_file = reg_file cin,
-  --   memory = updateMemory (memory cin) n (symEval cin dst) (symEval cin val),
-  --   stmts = stmts cin,
-  --   proc_modes = proc_modes cin
-  -- }
+      case pdest of
+        BvExpr a bitsize -> (updateMemory cin (bytes bitsize) a 0x1337, Store n pdest pval)
+        _ -> error $ "Store on symbolic mem not implemented"
+
+updateMemory :: ExecutionContext -> Int -> Int -> Int -> ExecutionContext
+updateMemory cin bc address val =
+    let nmem = foldl (\mem x -> assign mem ((address+x), (shift val (0-(8 * x))) .&. 0xff)) (memory cin) [0..bc-1]
+    in cin { memory = nmem }
 
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
@@ -146,10 +139,7 @@ symSteps cin | stmts cin == [] = (cin, [])
 
 symSteps cin =
     let x = snd (head (stmts cin)) in
-      let process ec [] ns = (ExecutionContext {
-            reg_file = reg_file ec,
-            memory = memory ec,
-            proc_modes = proc_modes ec,
+      let process ec [] ns = (ec {
             stmts = tail (stmts ec)
           }, (fst (head (stmts cin)), reverse ns))
           process ec (x:xs) ns =
