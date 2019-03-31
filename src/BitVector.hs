@@ -2,7 +2,6 @@ module BitVector where
 
 import Data.Vector as Vector
 import Data.Bits
-import Debug.Trace
 
 -- Convert instance of integral type to instance of some numerical type
 

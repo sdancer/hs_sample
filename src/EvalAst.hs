@@ -6,7 +6,6 @@ import Util
 import Data.Bits
 import Hapstone.Internal.Capstone as Capstone
 import BitVector
-import Debug.Trace
 
 -- Represents the state of a processor: register file contents, data memory contents, and
 -- the instruction memory.
@@ -130,8 +129,8 @@ step cin =
     Nothing -> error "Instruction pointer has not yet been set."
     Just registerValue ->
       case lookup (bvToInt registerValue) (stmts cin) of
-        Nothing -> error ("Instruction pointer has invalid value: " ++ show (bvToInt registerValue) ++ show (stmts cin))
-        Just x -> trace (show (bvToInt registerValue)) $ foldl exec cin x
+        Nothing -> error "Instruction pointer has invalid value."
+        Just x -> foldl exec cin x
 
 -- Applies the given function on the given argument a given number of times
 
