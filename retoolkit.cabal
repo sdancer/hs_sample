@@ -44,6 +44,7 @@ executable rekit_cli
                     , bytestring
                     , binary
                     , hapstone >= 0.2.0.1
+                    , rekitlib
  default-language:  Haskell2010
 
 test-suite spec
