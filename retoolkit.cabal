@@ -14,7 +14,7 @@ library rekitlib
  Exposed-modules:
             Ast
             , Asm
-            , Symbolic
+            , SymbolicEval
             , Util
             , Lifter
             , AstContext
@@ -39,13 +39,15 @@ executable rekit_cli
             ,Lifter
             ,Util
             ,X86Sem
-
+            , EvalAst
+            , SymbolicEval
  build-depends:     base >=4.5 && <9.8
                     , vector
                     , containers
                     , bytestring
                     , binary
                     , hapstone >= 0.2.0.1
+                    , rekitlib
  default-language:  Haskell2010
 
 test-suite spec
@@ -54,6 +56,8 @@ test-suite spec
    hs-source-dirs:
        test
    ghc-options: -Wall
+   other-modules:
+            TestBlockOne
    build-depends:         base
                           , tasty
                           , tasty-hunit
