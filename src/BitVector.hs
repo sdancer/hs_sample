@@ -17,8 +17,8 @@ digitBitSize :: Int
 digitBitSize = finiteBitSize (0 :: Word)
 
 -- First item of tuple is bit-vector value. The least significant digit comes first.
--- Second item is bit-vector size in bits. The bit-vector must have length >= ceil(size/
--- digitBitSize).
+-- Second item of tuple is bit-vector size in bits. The bit-vector must have length equal
+-- to ceil(size/digitBitSize).
 
 type BitVector = (Vector Word, Int)
 
@@ -38,9 +38,15 @@ empty :: BitVector
 
 empty = (Vector.empty, 0)
 
+-- Same as div but rounds upwards instead of downwards
+
+cdiv :: Int -> Int -> Int
+
+cdiv a b = -(div (-a) b)
+
 bitVector :: Word -> Int -> BitVector
 
-bitVector a b = (generate (1 + div b digitBitSize) (\x -> if x == 0 then a else 0), b)
+bitVector a b = (generate (cdiv b digitBitSize) (\x -> if x == 0 then a else 0), b)
 
 zero :: BitVector -> BitVector
 
@@ -78,20 +84,16 @@ zx :: Int -> BitVector -> BitVector
 
 zx a b | a == 0 = b
 
-zx a (bv,bn) | mod bn digitBitSize == 0 = zx (a - re) (Vector.snoc nbv 0, bn + re)
-  where re = min digitBitSize a
-        len = div bn digitBitSize
-        nbv = Vector.take len bv
+zx a (bv,bn) | mod bn digitBitSize == 0 =
+  zx (a - re) (Vector.snoc bv 0, bn + re) where re = min digitBitSize a
 
--- Removes the excess words of the bit-vector and sets excess bits to zero
+-- Sets excess bits of bit-vector to zero
 
 zx a (bv,bn) =
   let zc = mod (-bn) digitBitSize
       re = min zc a
-      lastIx = div bn digitBitSize
-      lastVal = bv ! lastIx
-      lastValMasked = lastVal .&. (shift (-1 :: Word) (-zc))
-  in zx (a - re) (Vector.snoc (Vector.take lastIx bv) lastValMasked, bn + re)
+      msd = (Vector.last bv) .&. (shift (-1 :: Word) (-zc))
+  in zx (a - re) (Vector.snoc (Vector.init bv) msd, bn + re)
 
 -- Compares two bit-vectors by zero-extending both and element-wise checking word equality
 
@@ -101,19 +103,17 @@ equal (_,an) (_,bn) | an /= bn = error "Bit-vector arguments to EqualExpr have d
 
 equal a b =
   let ext = mod (-(bvlength a)) digitBitSize
-      len = -(div (-(bvlength a)) digitBitSize)
       (av,_) = zx ext a
       (bv,_) = zx ext b
-  in if Vector.and (Vector.zipWith (==) (Vector.take len av) bv) then True else False
+  in if Vector.and (Vector.zipWith (==) av bv) then True else False
 
--- Truncates the supplied bit-vector to the given length. Also accepts "bit-vectors" where
--- the excess bits are not zero.
+-- Truncates the supplied bit-vector to the given length.
 
 bvtruncate :: Int -> BitVector -> BitVector
 
 bvtruncate a (bv,bn) | a > bn = error "Truncation length is larger than bit-length."
 
-bvtruncate a (bv,bn) = (Vector.take (1 + div a digitBitSize) bv,a)
+bvtruncate a (bv,bn) = (Vector.take (cdiv a digitBitSize) bv,a)
 
 bvadd :: BitVector -> BitVector -> BitVector
 
