@@ -6,6 +6,7 @@ import Hapstone.Internal.X86 as X86
 import Util
 import Data.Bits
 import Hapstone.Internal.Capstone as Capstone
+import BitVector
 
 -- Simplifies the given expression in the given context
 
@@ -13,61 +14,55 @@ symEval :: ExecutionContext -> Expr -> Expr
 
 symEval cin (BvxorExpr c d) =
   case (symEval cin c, symEval cin d) of
-    (BvExpr a an, BvExpr b bn) | an == bn -> BvExpr (xor a b) an
-    (BvExpr _ _, BvExpr _ _) -> error "Bit-vector arguments to BvxorExpr have different bit-lengths."
+    (BvExpr abv, BvExpr bbv) -> BvExpr (bvxor abv bbv)
     (c, d) -> BvxorExpr c d
 
 symEval cin (BvandExpr c d) =
   case (symEval cin c, symEval cin d) of
-    (BvExpr a an, BvExpr b bn) | an == bn -> BvExpr (a .&. b) an
-    (BvExpr _ _, BvExpr _ _) -> error "Bit-vector arguments to BvandExpr have different bit-lengths."
+    (BvExpr abv, BvExpr bbv) -> BvExpr (bvand abv bbv)
     (c, d) -> BvandExpr c d
 
 symEval cin (BvorExpr c d) =
   case (symEval cin c, symEval cin d) of
-    (BvExpr a an, BvExpr b bn) | an == bn -> BvExpr (a .|. b) an
-    (BvExpr _ _, BvExpr _ _) -> error "Bit-vector arguments to BvorExpr have different bit-lengths."
+    (BvExpr abv, BvExpr bbv) -> BvExpr (bvor abv bbv)
     (c, d) -> BvorExpr c d
 
 symEval cin (BvnotExpr c) =
   case (symEval cin c) of
-    (BvExpr a an) -> BvExpr (complement a) an
+    (BvExpr abv) -> BvExpr (bvnot abv)
     (c) -> BvnotExpr c
 
 symEval cin (EqualExpr c d) =
   case (symEval cin c, symEval cin d) of
-    (BvExpr a an, BvExpr b bn) | an == bn -> BvExpr (if a == b then 1 else 0) an
-    (BvExpr _ _, BvExpr _ _) -> error "Bit-vector arguments to EqualExpr have different bit-lengths."
+    (BvExpr abv, BvExpr bbv) -> BvExpr (if equal abv bbv then one abv else zero abv)
     (c, d) -> EqualExpr c d
 
 symEval cin (BvaddExpr c d) =
   case (symEval cin c, symEval cin d) of
-    (BvExpr a an, BvExpr b bn) | an == bn -> BvExpr (a + b) an
-    (BvExpr _ _, BvExpr _ _) -> error "Bit-vector arguments to BvaddExpr have different bit-lengths."
+    (BvExpr abv, BvExpr bbv) -> BvExpr (bvadd abv bbv)
     (c, d) -> BvaddExpr c d
 
 symEval cin (BvsubExpr c d) =
   case (symEval cin c, symEval cin d) of
-    (BvExpr a an, BvExpr b bn) | an == bn -> BvExpr (a - b) an
-    (BvExpr _ _, BvExpr _ _) -> error "Bit-vector arguments to BvsubExpr have different bit-lengths."
+    (BvExpr abv, BvExpr bbv) -> BvExpr (bvsub abv bbv)
     (c, d) -> BvsubExpr c d
 
 symEval cin (BvlshrExpr c d) =
   case (symEval cin c, symEval cin d) of
-    (BvExpr a an, BvExpr b _) -> BvExpr (convert (shift ((convert a) :: Word) (-b))) an
+    (BvExpr abv, BvExpr bbv) -> BvExpr (bvlshr abv bbv)
     (c, d) -> BvlshrExpr c d
 
 symEval cin (ZxExpr a c) =
   case (symEval cin c) of
-    (BvExpr b bn) -> BvExpr b (bn + a)
+    (BvExpr bbv) -> BvExpr (zx a bbv)
     (c) -> ZxExpr a c
 
 symEval cin (IteExpr a b c) =
   case (symEval cin a, symEval cin b, symEval cin c) of
-    (BvExpr a _, b, c) -> if a /= 0 then b else c
+    (BvExpr a, b, c) -> if equal a (zero a) then c else b
     (a, b, c) -> IteExpr a b c
 
-symEval cin (ReplaceExpr a b c d) =
+{-symEval cin (ReplaceExpr a b c d) =
   case (symEval cin c, symEval cin d) of
     (BvExpr c cn, BvExpr d dn) | dn == b+1-a ->
       BvExpr ((c .&. (complement (oneBitsBetween a b))) .|. shift d b) cn
@@ -77,12 +72,12 @@ symEval cin (ReplaceExpr a b c d) =
 symEval cin (ExtractExpr a b c) =
   case (symEval cin c) of
     (BvExpr c cn) -> BvExpr ((shift c (-b)) .&. (oneBitsUpto (a + 1 - b))) (a + 1 - b)
-    (c) -> ExtractExpr a b c
+    (c) -> ExtractExpr a b c-}
 
 symEval cin (GetReg bs) =
   let regVal = getRegisterValue (reg_file cin) bs
   in case regVal of
-    Just x -> BvExpr x (getRegSize bs)
+    Just x -> BvExpr x
     Nothing -> GetReg bs
 
 -- add ro memory (raise exception if written)
@@ -90,11 +85,12 @@ symEval cin (GetReg bs) =
 
 symEval cin (Load a b) =
   case (symEval cin b) of
-    (BvExpr memStart bn) ->
-      let memVal = getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
+    (BvExpr memStartBv) ->
+      let memStart = bvToInt memStartBv
+          memVal = getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
       in case memVal of
-        Just x -> BvExpr x a
-        Nothing -> Load a (BvExpr memStart bn)
+        Just x -> BvExpr x
+        Nothing -> Load a (BvExpr memStartBv)
     (b) -> Load a b
 
 symEval cin expr = expr
@@ -108,7 +104,7 @@ symExec :: ExecutionContext -> Stmt -> (ExecutionContext, Stmt)
 symExec cin (SetReg bs a) =
   let c = symEval cin a
       nreg = case c of
-        BvExpr a an -> update_reg_file (reg_file cin) bs a
+        BvExpr a -> update_reg_file (reg_file cin) bs a
         _ -> let treg_file = reg_file cin
                  old_ranges = ranges treg_file
                  tvalues = values treg_file
@@ -122,7 +118,7 @@ symExec cin (Store n dst val) =
       bytes bs = shift bs (0-3)
   in
       case pdest of
-        BvExpr a bitsize -> (updateMemory cin (bytes bitsize) a 0x1337, Store n pdest pval)
+        BvExpr a -> (updateMemory cin (bytes (bvlength a)) (bvToInt a) 0x1337, Store n pdest pval)
         _ -> error $ "Store on symbolic mem not implemented"
 
 updateMemory :: ExecutionContext -> Int -> Int -> Int -> ExecutionContext

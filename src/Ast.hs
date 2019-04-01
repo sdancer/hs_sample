@@ -6,6 +6,7 @@ import Hapstone.Internal.X86 as X86
 import Hapstone.Internal.Capstone as Capstone
 import Data.Bits
 import Util
+import BitVector
 
 byte_size_bit :: Num a => a
 byte_size_bit = 8
@@ -17,8 +18,8 @@ dqword_size_bit = 128
 qqword_size_bit = 256
 dqqword_size_bit = 512
 
-reg_file_bytes :: Num a => a
-reg_file_bytes = 192
+reg_file_bits :: Num a => a
+reg_file_bits = 192 * 8
 
 data X86Flag =
     X86FlagCf | X86FlagPf | X86FlagAf | X86FlagZf | X86FlagSf | X86FlagTf | X86FlagIf
@@ -133,13 +134,17 @@ get_insn_ptr modes =
 
 -- Gets the architecture size for the given processor mode
 
-get_arch_size :: [CsMode] -> Int
+get_arch_byte_size :: [CsMode] -> Int
 
-get_arch_size modes =
+get_arch_byte_size modes =
   if elem CsMode16 modes then 2
   else if elem CsMode32 modes then 4
   else if elem CsMode64 modes then 8
   else error "Processor modes underspecified."
+
+get_arch_bit_size :: [CsMode] -> Int
+
+get_arch_bit_size = (* 8) . get_arch_byte_size
 
 -- Get the given bit of the integer
 
@@ -149,14 +154,14 @@ getBit value bit = if testBit value bit then 1 else 0
 
 data RegisterFile = RegisterFile {
   ranges :: [CompoundReg], -- The ranges where registers are defined
-  values :: [Int] -- Sequential storage of the bits of the registers
+  values :: BitVector -- Sequential storage of the bits of the registers
 } deriving (Eq, Show)
 
 -- An empty register file for convenience
 
 emptyRegisterFile :: RegisterFile
 
-emptyRegisterFile = RegisterFile { ranges = [], values = replicate reg_file_bytes 0 }
+emptyRegisterFile = RegisterFile { ranges = [], values = bitVector 0 reg_file_bits }
 
 -- Determines if the given register has a definite value in the register file
 
@@ -166,43 +171,16 @@ isRegisterDefined regFile reg = or (map (isSubregisterOf reg) (ranges regFile))
 
 -- Gets the value of the specified compound register from the register file
 
-getRegisterValue :: RegisterFile -> CompoundReg -> Maybe Int
+getRegisterValue :: RegisterFile -> CompoundReg -> Maybe BitVector
 
-getRegisterValue regFile (l, h) | l == h = Just 0
-
--- If the register's bits are multiples of byte_size_bit, access them using a list index
-
-getRegisterValue regFile (l, h) | isRegisterDefined regFile (l, h) && (mod l byte_size_bit == 0) && (mod h byte_size_bit == 0) =
-  let l_byte = div l byte_size_bit
-      Just upper_bytes = getRegisterValue regFile (l+byte_size_bit, h)
-  in Just ((values regFile !! l_byte) + shift upper_bytes byte_size_bit)
-
--- Otherwise get the register value from the register file one bit at a time
+-- Extracts the register value from the register file if compound register is a subset of ranges
 
 getRegisterValue regFile (l, h) | isRegisterDefined regFile (l, h) =
-  let l_byte = div l byte_size_bit
-      l_bit = mod l byte_size_bit
-      Just upper_bits = getRegisterValue regFile (l+1, h)
-  in Just (getBit (values regFile !! l_byte) l_bit + shift upper_bits 1)
+  Just (bvextract l h (values regFile))
 
 -- Otherwise the desired register has not yet been defined
 
 getRegisterValue _ _ = Nothing
-
--- Replace the given index of the given list with the given value
-
-replace :: [a] -> Int -> a -> [a]
-
-replace (_:xs) 0 val = val:xs
-
-replace (x:xs) idx val = x:(replace xs (idx - 1) val)
-
--- Set the given bit of the integer to the given value
-
-assignBit :: Int -> Int -> Int -> Int
-
-assignBit value bit state =
-  (value .&. (complement (shift 1 bit))) .|. (shift state bit)
 
 -- Adds the given register to the given list taking care to combine those that overlap
 
@@ -234,39 +212,22 @@ removeRegister regs (l1,h1) =
 
 -- Updates the given register file by putting the given value in the given register
 
-update_reg_file :: RegisterFile -> CompoundReg -> Int -> RegisterFile
-
-update_reg_file regs (l, h) _ | l == h = regs
-
--- If the register's bits are multiples of byte_size_bit, access them using a list index
-
-update_reg_file regs (l, h) val | (mod l byte_size_bit == 0) && (mod h byte_size_bit == 0) =
-  let l_byte = div l byte_size_bit
-      val_byte0 = val .&. (bit byte_size_bit - 1)
-      upper_bytes = convert (shift ((convert val) :: Word) (-byte_size_bit))
-      new_values = replace (values regs) l_byte val_byte0
-      new_ranges = addRegister (ranges regs) (l, h)
-  in update_reg_file (RegisterFile {values = new_values, ranges = new_ranges}) (l+byte_size_bit,h) upper_bytes
-
--- Otherwise put the given value into the register file one bit at a time
+update_reg_file :: RegisterFile -> CompoundReg -> BitVector -> RegisterFile
 
 update_reg_file regs (l, h) val =
-  let l_byte = div l byte_size_bit
-      current_val = values regs !! l_byte
-      new_val = assignBit current_val (mod l byte_size_bit) (val .&. 1)
-      new_values = replace (values regs) l_byte new_val
+  let new_values = bvreplace (values regs) l val
       new_ranges = addRegister (ranges regs) (l, h)
-  in update_reg_file (RegisterFile {values = new_values, ranges = new_ranges}) (l+1,h) (shift val (-1))
+  in RegisterFile {values = new_values, ranges = new_ranges}
 
 -- Gets the specified bytes from memory
 
-getMemoryValue :: [(Int, Int)] -> [Int] -> Maybe Int
+getMemoryValue :: [(Int, Int)] -> [Int] -> Maybe BitVector
 
-getMemoryValue _ [] = Just 0
+getMemoryValue _ [] = Just empty
 
 getMemoryValue mem (b:bs) =
   case (lookup b mem, getMemoryValue mem bs) of
-    (Just x, Just y) -> Just (x + shift y byte_size_bit)
+    (Just x, Just y) -> Just (bvconcat y (intToBv x))
     _ -> Nothing
 
 -- Get the register values from the register file
@@ -295,6 +256,9 @@ is_control_reg reg = elem reg
   [X86RegCr0, X86RegCr1, X86RegCr2, X86RegCr3, X86RegCr4, X86RegCr5, X86RegCr6,
   X86RegCr7, X86RegCr8, X86RegCr9, X86RegCr10, X86RegCr11, X86RegCr12, X86RegCr13,
   X86RegCr14, X86RegCr15]
+
+-- The expressions that the machine code will be lifted to. Expressions do not modify
+-- context but are composable.
 
 data Expr =
     BvaddExpr Expr Expr
@@ -326,7 +290,7 @@ data Expr =
   | BvuremExpr Expr Expr
   | BvxnorExpr Expr Expr
   | BvxorExpr Expr Expr
-  | BvExpr Int Int
+  | BvExpr BitVector
   | CompoundExpr -- ! `[<expr1> <expr2> <expr3> ...]` node
   | ConcatExpr [Expr]
   | DecimalExpr Int --float?
@@ -350,6 +314,9 @@ data Expr =
   | Load Int Expr
   | GetReg CompoundReg
   deriving (Eq, Show)
+
+-- The statements that the machine code will be lifted to. Statements modify context and
+-- are not composable.
 
 data Stmt =
     Store Int Expr Expr

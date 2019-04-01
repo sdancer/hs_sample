@@ -7,6 +7,7 @@ import Hapstone.Internal.Capstone as Capstone
 import Hapstone.Internal.X86      as X86
 import Util
 import Data.Word
+import BitVector
 
 --x86 vs arm, etc?
 mmp :: [CsMode] -> CsInsn -> (Int, [Stmt])
