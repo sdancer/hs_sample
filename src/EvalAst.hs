@@ -68,9 +68,9 @@ eval cin (ZxExpr a b) = zx a (eval cin b)
 eval cin (IteExpr a b c) =
   let abv = eval cin a in if equal abv (zero abv) then eval cin c else eval cin b
 
-eval cin (ReplaceExpr a b c d) = bvreplace (eval cin c) b (eval cin d)
+eval cin (ReplaceExpr b c d) = bvreplace (eval cin c) b (eval cin d)
 
-eval cin (ExtractExpr a b c) = bvextract b a (eval cin c)
+eval cin (ExtractExpr a b c) = bvextract a b (eval cin c)
 
 eval cin (GetReg bs) =
   case getRegisterValue (reg_file cin) bs of

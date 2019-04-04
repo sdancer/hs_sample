@@ -26,7 +26,8 @@ data X86Flag =
   | X86FlagDf | X86FlagOf | X86FlagIopl | X86FlagNt | X86FlagRf | X86FlagVm | X86FlagAc
   | X86FlagVif | X86FlagVip | X86FlagId deriving (Eq, Show)
 
--- A representation of a register as a list of indicies. Enables overlapping registers.
+-- A representation of a register as a pair indicating the lower (inclusive) and upper bit
+-- (exclusive) indicies. Enables overlapping registers.
 
 type CompoundReg = (Int, Int)
 
@@ -145,12 +146,6 @@ get_arch_byte_size modes =
 get_arch_bit_size :: [CsMode] -> Int
 
 get_arch_bit_size = (* 8) . get_arch_byte_size
-
--- Get the given bit of the integer
-
-getBit :: Int -> Int -> Int
-
-getBit value bit = if testBit value bit then 1 else 0
 
 data RegisterFile = RegisterFile {
   ranges :: [CompoundReg], -- The ranges where registers are defined
@@ -298,7 +293,7 @@ data Expr =
   | DistinctExpr Expr Expr
   | EqualExpr Expr Expr
   | ExtractExpr Int Int Expr -- ! `((_ extract <high> <low>) <expr>)` node
-  | ReplaceExpr Int Int Expr Expr
+  | ReplaceExpr Int Expr Expr
   | IffExpr Expr Expr -- ! `(iff <expr1> <expr2>)`
   | IteExpr Expr Expr Expr -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
   | LandExpr Expr Expr

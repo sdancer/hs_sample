@@ -62,17 +62,15 @@ symEval cin (IteExpr a b c) =
     (BvExpr a, b, c) -> if equal a (zero a) then c else b
     (a, b, c) -> IteExpr a b c
 
-{-symEval cin (ReplaceExpr a b c d) =
+symEval cin (ReplaceExpr b c d) =
   case (symEval cin c, symEval cin d) of
-    (BvExpr c cn, BvExpr d dn) | dn == b+1-a ->
-      BvExpr ((c .&. (complement (oneBitsBetween a b))) .|. shift d b) cn
-    (BvExpr _ _, BvExpr _ _) -> error "Size of replacement bit-vector does not match target space."
-    (c, d) -> ReplaceExpr a b c d
+    (BvExpr cbv, BvExpr dbv) -> BvExpr (bvreplace cbv b dbv)
+    (c, d) -> ReplaceExpr b c d
 
 symEval cin (ExtractExpr a b c) =
   case (symEval cin c) of
-    (BvExpr c cn) -> BvExpr ((shift c (-b)) .&. (oneBitsUpto (a + 1 - b))) (a + 1 - b)
-    (c) -> ExtractExpr a b c-}
+    (BvExpr d) -> BvExpr (bvextract a b d)
+    (c) -> ExtractExpr a b c
 
 symEval cin (GetReg bs) =
   let regVal = getRegisterValue (reg_file cin) bs
