@@ -90,12 +90,8 @@ exec :: ExecutionContext -> Stmt -> ExecutionContext
 
 -- Executes a SetReg operation by setting each byte of the register separately
 
-exec cin (SetReg bs a) = ExecutionContext {
-    reg_file = update_reg_file (reg_file cin) bs (eval cin a),
-    memory = memory cin,
-    stmts = stmts cin,
-    proc_modes = proc_modes cin
-  }
+exec cin (SetReg bs a) =
+  cin { reg_file = update_reg_file (reg_file cin) bs (eval cin a) }
 
 -- Executes a Store operation by setting each byte of memory separately
 
@@ -103,12 +99,7 @@ exec cin (Store n dst val) =
   let updateMemory mem 0 _ _ = mem
       updateMemory mem c d v =
         updateMemory (assign mem (d, (v .&. (bit byte_size_bit - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
-  in ExecutionContext {
-    reg_file = reg_file cin,
-    memory = updateMemory (memory cin) n (bvToInt (eval cin dst)) (bvToInt (eval cin val)),
-    stmts = stmts cin,
-    proc_modes = proc_modes cin
-  }
+  in cin { memory = updateMemory (memory cin) n (bvToInt (eval cin dst)) (bvToInt (eval cin val)) }
 
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
