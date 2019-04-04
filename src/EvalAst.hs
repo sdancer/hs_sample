@@ -30,14 +30,6 @@ basicX86Context modes stmts = ExecutionContext {
   proc_modes = modes
 }
 
--- Evaluates to a bit vector with all 1s up to bit high
-
-oneBitsUpto high = (shift 1 (high + 1)) - 1
-
--- Evaluates to a bit vector with all 1s between bit low and bit high
-
-oneBitsBetween high low = oneBitsUpto high - (oneBitsUpto (low - 1))
-
 -- Evaluates the given expression in the given context and returns the result
 
 eval :: ExecutionContext -> Expr -> BitVector
