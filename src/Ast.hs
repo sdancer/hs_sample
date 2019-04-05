@@ -147,36 +147,6 @@ get_arch_bit_size :: [CsMode] -> Int
 
 get_arch_bit_size = (* 8) . get_arch_byte_size
 
-data RegisterFile = RegisterFile {
-  ranges :: [CompoundReg], -- The ranges where registers are defined
-  values :: BitVector -- Sequential storage of the bits of the registers
-} deriving (Eq, Show)
-
--- An empty register file for convenience
-
-emptyRegisterFile :: RegisterFile
-
-emptyRegisterFile = RegisterFile { ranges = [], values = bitVector 0 reg_file_bits }
-
--- Determines if the given register has a definite value in the register file
-
-isRegisterDefined :: RegisterFile -> CompoundReg -> Bool
-
-isRegisterDefined regFile reg = or (map (isSubregisterOf reg) (ranges regFile))
-
--- Gets the value of the specified compound register from the register file
-
-getRegisterValue :: RegisterFile -> CompoundReg -> Maybe BitVector
-
--- Extracts the register value from the register file if compound register is a subset of ranges
-
-getRegisterValue regFile (l, h) | isRegisterDefined regFile (l, h) =
-  Just (bvextract l h (values regFile))
-
--- Otherwise the desired register has not yet been defined
-
-getRegisterValue _ _ = Nothing
-
 -- Adds the given register to the given list taking care to combine those that overlap
 
 addRegister :: [CompoundReg] -> CompoundReg -> [CompoundReg]
@@ -205,37 +175,17 @@ removeRegister regs (l1,h1) =
         else [(l2,h2)]
   in foldl (++) [] (map tryRemove regs)
 
--- Updates the given register file by putting the given value in the given register
-
-update_reg_file :: RegisterFile -> CompoundReg -> BitVector -> RegisterFile
-
-update_reg_file regs (l, h) val =
-  let new_values = bvreplace (values regs) l val
-      new_ranges = addRegister (ranges regs) (l, h)
-  in RegisterFile {values = new_values, ranges = new_ranges}
-
--- Gets the specified bytes from memory
-
-getMemoryValue :: [(Int, Int)] -> [Int] -> Maybe BitVector
-
-getMemoryValue _ [] = Just empty
-
-getMemoryValue mem (b:bs) =
-  case (lookup b mem, getMemoryValue mem bs) of
-    (Just x, Just y) -> Just (bvconcat y (intToBv x))
-    _ -> Nothing
-
--- Get the register values from the register file
-
-getRegisterValues regFile =
-  map (\(x, y) -> (x, getRegisterValue regFile y)) (filter (\(x, y) -> isRegisterDefined regFile y) x86RegisterMap)
-
 -- Checks if a register is a subregister of another register
 
 isSubregisterOf :: CompoundReg -> CompoundReg -> Bool
 
-isSubregisterOf (childL, childH) (parentL, parentH) =
-  (parentL <= childL) && (parentH >= childH)
+isSubregisterOf (childL, childH) (parentL, parentH) = (parentL <= childL) && (parentH >= childH)
+
+-- Subtracts one register from another. Useful for obtaining a register's range relative to another register
+
+registerSub :: CompoundReg -> CompoundReg -> CompoundReg
+
+registerSub (l1, h1) (l2, h2) = (l1-l2, h1-l2)
 
 -- Checks if the given register is a segment register
 
@@ -305,9 +255,10 @@ data Expr =
   | SxExpr Int Expr
   | VariableExpr
   | ZxExpr Int Expr
-  | UndefinedExpr -- The undefined value
+  | UndefinedExpr Int -- The undefined value
   | Load Int Expr
   | GetReg CompoundReg
+  | StmtRef Int
   deriving (Eq, Show)
 
 -- The statements that the machine code will be lifted to. Statements modify context and

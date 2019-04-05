@@ -268,7 +268,7 @@ xor_s modes inst =
   in [
       inc_insn_ptr modes inst,
       store_stmt modes dst_op xor_node,
-      SetReg (fromX86Flag X86FlagAf) UndefinedExpr,
+      SetReg (fromX86Flag X86FlagAf) (UndefinedExpr 1),
       pf_s xor_node dst_op,
       sf_s xor_node dst_op,
       zf_s xor_node dst_op,
@@ -288,7 +288,7 @@ and_s modes inst =
   in [
       inc_insn_ptr modes inst,
       store_stmt modes dst_op and_node,
-      SetReg (fromX86Flag X86FlagAf) UndefinedExpr,
+      SetReg (fromX86Flag X86FlagAf) (UndefinedExpr 1),
       pf_s and_node dst_op,
       sf_s and_node dst_op,
       zf_s and_node dst_op,
@@ -308,7 +308,7 @@ or_s modes inst =
   in [
       inc_insn_ptr modes inst,
       store_stmt modes dst_op and_node,
-      SetReg (fromX86Flag X86FlagAf) UndefinedExpr,
+      SetReg (fromX86Flag X86FlagAf) (UndefinedExpr 1),
       pf_s and_node dst_op,
       sf_s and_node dst_op,
       zf_s and_node dst_op,
@@ -393,12 +393,12 @@ mov_s modes inst =
     [inc_insn_ptr modes inst,
     store_stmt modes dst_op node]
     ++ includeIf undef
-        [SetReg (fromX86Flag X86FlagAf) UndefinedExpr,
-        SetReg (fromX86Flag X86FlagPf) UndefinedExpr,
-        SetReg (fromX86Flag X86FlagSf) UndefinedExpr,
-        SetReg (fromX86Flag X86FlagZf) UndefinedExpr,
-        SetReg (fromX86Flag X86FlagCf) UndefinedExpr,
-        SetReg (fromX86Flag X86FlagOf) UndefinedExpr]
+        [SetReg (fromX86Flag X86FlagAf) (UndefinedExpr 1),
+        SetReg (fromX86Flag X86FlagPf) (UndefinedExpr 1),
+        SetReg (fromX86Flag X86FlagSf) (UndefinedExpr 1),
+        SetReg (fromX86Flag X86FlagZf) (UndefinedExpr 1),
+        SetReg (fromX86Flag X86FlagCf) (UndefinedExpr 1),
+        SetReg (fromX86Flag X86FlagOf) (UndefinedExpr 1)]
 
 
 -- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
