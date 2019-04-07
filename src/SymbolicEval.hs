@@ -114,11 +114,11 @@ getMemoryValue :: [(Int, Expr)] -> (Int, Int) -> Expr
 getMemoryValue mem (a,b) =
   let exprSize = (b-a) * byte_size_bit
       setByte expr offset =
-        ReplaceExpr (offset*byte_size_bit) expr $
+        replaceExpr (offset*byte_size_bit) expr $
           case lookup (a+offset) mem of
             Just x -> x
             _ -> Load 1 (BvExpr $ intToBv (a+offset))
-  in foldl setByte (UndefinedExpr exprSize) [0..b-a]
+  in foldl setByte (UndefinedExpr exprSize) [0..b-a-1]
 
 -- Represents the state of a processor: register file contents, data memory contents, and
 -- the instruction memory.
@@ -212,7 +212,7 @@ symEval cin (Load a b) =
   case (symEval cin b) of
     (BvExpr memStartBv) ->
       let memStart = bvToInt memStartBv
-      in getMemoryValue (memory cin) (memStart,memStart + a - 1)
+      in getMemoryValue (memory cin) (memStart,memStart + a)
     (b) -> Load a b
 
 symEval cin expr = expr
