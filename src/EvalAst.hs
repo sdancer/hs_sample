@@ -53,7 +53,7 @@ updateRegisterFile :: NumRegisterFile -> CompoundReg -> BitVector -> NumRegister
 updateRegisterFile reg_file reg val =
   let (ranges, _) = unzip reg_file
       new_ranges = addRegister ranges reg
-      undef_reg_file = map (\x -> (x, bitVector 0 (getRegSize x))) new_ranges
+      undef_reg_file = map (\x -> (x, bitVector 0 (getRegisterSize x))) new_ranges
       put reg_file (reg, value) = map (\(x, y) ->
         (x, if isSubregisterOf reg x then (let pos = fst (registerSub reg x) in bvreplace y pos value) else y)) reg_file
   in foldl put undef_reg_file (reg_file ++ [(reg, val)])

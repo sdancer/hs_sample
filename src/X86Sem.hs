@@ -51,7 +51,7 @@ getZxRegister :: [CsMode] -> CompoundReg -> Expr
 getZxRegister modes reg =
   ZxExpr (arch_bit_size - reg_size) (GetReg reg) where
     arch_bit_size = get_arch_bit_size modes
-    reg_size = getRegSize reg
+    reg_size = getRegisterSize reg
 
 -- Gets an expression for the memory location of the given memory operand
 

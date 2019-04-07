@@ -109,9 +109,9 @@ fromX86Flag reg = case lookup reg x86FlagMap of
 
 -- Gets the size of the given register in bits
 
-getRegSize :: CompoundReg -> Int
+getRegisterSize :: CompoundReg -> Int
 
-getRegSize (l, h) = h - l
+getRegisterSize (l, h) = h - l
 
 -- Gets the stack register for the given processor mode
 
@@ -180,6 +180,12 @@ removeRegister regs (l1,h1) =
 isSubregisterOf :: CompoundReg -> CompoundReg -> Bool
 
 isSubregisterOf (childL, childH) (parentL, parentH) = (parentL <= childL) && (parentH >= childH)
+
+-- Gets the largest register containing this register
+
+getRootRegister :: CompoundReg -> CompoundReg
+
+getRootRegister reg = foldl (\x y -> if isSubregisterOf x y then y else x) reg (snd $ unzip x86RegisterMap)
 
 -- Subtracts one register from another. Useful for obtaining a register's range relative to another register
 
@@ -258,7 +264,6 @@ data Expr =
   | UndefinedExpr Int -- The undefined value
   | Load Int Expr
   | GetReg CompoundReg
-  | StmtRef Int
   deriving (Eq, Show)
 
 -- The statements that the machine code will be lifted to. Statements modify context and
@@ -268,4 +273,62 @@ data Stmt =
     Store Int Expr Expr
   | SetReg CompoundReg Expr
   deriving (Eq, Show)
+
+getExprSize :: Expr -> Int
+
+getExprSize (BvaddExpr a b) = getExprSize a
+
+getExprSize (BvandExpr a b) = getExprSize a
+
+getExprSize (BvashrExpr a b) = getExprSize a
+
+getExprSize (BvlshrExpr a b) = getExprSize a
+
+getExprSize (BvnandExpr a b) = getExprSize a
+
+getExprSize (BvnegExpr a) = getExprSize a
+
+getExprSize (BvnorExpr a b) = getExprSize a
+
+getExprSize (BvnotExpr a) = getExprSize a
+
+getExprSize (BvorExpr a b) = getExprSize a
+
+getExprSize (BvrolExpr a b) = getExprSize a
+
+getExprSize (BvrorExpr a b) = getExprSize a
+
+getExprSize (BvsubExpr a b) = getExprSize a
+
+getExprSize (BvxnorExpr a b) = getExprSize a
+
+getExprSize (BvxorExpr a b) = getExprSize a
+
+getExprSize (BvExpr a) = bvlength a
+
+getExprSize (ConcatExpr a) = sum $ map getExprSize a
+
+getExprSize (EqualExpr a b) = getExprSize a
+
+getExprSize (ExtractExpr l h e) = h - l
+
+getExprSize (ReplaceExpr l a b) = getExprSize a
+
+getExprSize (IteExpr a b c) = getExprSize b
+
+getExprSize (LandExpr a b) = getExprSize a
+
+getExprSize (LnotExpr a) = getExprSize a
+
+getExprSize (LorExpr a b) = getExprSize a
+
+getExprSize (SxExpr a b) = a + getExprSize b
+
+getExprSize (ZxExpr a b) = a + getExprSize b
+
+getExprSize (UndefinedExpr a) = a
+
+getExprSize (Load a b) = a * byte_size_bit
+
+getExprSize (GetReg a) = getRegisterSize a
 

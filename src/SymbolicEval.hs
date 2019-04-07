@@ -41,43 +41,66 @@ isRegisterDefined :: SymRegisterFile -> CompoundReg -> Bool
 
 isRegisterDefined regFile reg = or (map (isSubregisterOf reg) (ranges regFile))
 
-getRegisterParent :: SymRegisterFile -> CompoundReg -> Maybe CompoundReg
+-- Extracts the expression in the given bit-range of the given expression
 
-getRegisterParent regFile reg = find (isSubregisterOf reg . fst) regFile >>= Just . fst
+extractExpr :: Int -> Int -> Expr -> Expr
+
+-- The extraction is the entire expression
+extractExpr l h e | h - l == getExprSize e = e
+-- The extraction is being done on a literal
+extractExpr l h (BvExpr a) = BvExpr $ bvextract l h a
+-- The extraction is within the replacement expression
+extractExpr l h (ReplaceExpr a e f) | a <= l && h <= a + getExprSize f =
+  extractExpr y z f where y = l - a; z = h - a
+-- The replacement expression is disjoint from the extraction
+extractExpr l h (ReplaceExpr a e f) | a + getExprSize f <= l || h <= a = extractExpr l h e
+-- No simplification possible
+extractExpr l h e = ExtractExpr l h e
 
 -- Gets the value of the specified compound register from the register file
 
-getRegisterValue :: SymRegisterFile -> CompoundReg -> Maybe Expr
+getRegisterValue :: SymRegisterFile -> CompoundReg -> Expr
 
 getRegisterValue regFile reg =
-  case getRegisterParent regFile reg of
-    Just parentReg ->
-      let (l, h) = registerSub reg parentReg
-      in Just $ ExtractExpr l h $ fromJust $ lookup parentReg regFile
-    Nothing -> Nothing
+  let rootRegister = getRootRegister reg
+      (l,h) = registerSub reg rootRegister
+  in case lookup rootRegister regFile of
+    Just x -> extractExpr l h x
+    Nothing -> GetReg reg
+
+-- Replace the expression in the given bit-range of the given expression
+
+replaceExpr :: Int -> Expr -> Expr -> Expr
+
+-- A part of a literal is being replaced by another literal
+replaceExpr l (BvExpr a) (BvExpr b) = BvExpr $ bvreplace a l b
+-- The current replacement coincides with a previous replacement
+replaceExpr l (ReplaceExpr a b c) e | l == a && getExprSize e == getExprSize c = ReplaceExpr l b e
+-- The current replacement is disjoint from previous replacement
+replaceExpr l (ReplaceExpr a b c) e | l + getExprSize e <= a || a + getExprSize c <= l =
+  ReplaceExpr a (replaceExpr l b e) c
+-- The current replacement cannot be simplified
+replaceExpr l f e = ReplaceExpr l f e
 
 -- Updates the given register file by putting the given value in the given register
 
 setRegisterValue :: SymRegisterFile -> CompoundReg -> Expr -> SymRegisterFile
 
-setRegisterValue reg_file reg val =
-  let (ranges, _) = unzip reg_file
-      new_ranges = addRegister ranges reg
-      undef_reg_file = map (\x -> (x, UndefinedExpr (getRegSize x))) new_ranges
-      put reg_file (reg, value) = map (\(x, y) ->
-        (x, if isSubregisterOf reg x then (let pos = fst (registerSub reg x) in ReplaceExpr pos y value) else y)) reg_file
-  in foldl put undef_reg_file (reg_file ++ [(reg, val)])
+setRegisterValue regFile reg val =
+  let rootRegister = getRootRegister reg
+      (l,h) = registerSub reg rootRegister
+      newRootExpr = replaceExpr l (getRegisterValue regFile rootRegister) val
+  in assign regFile (rootRegister, newRootExpr)
 
 -- Updates the register file by removing the value in the given register
 
 unsetRegisterValue :: SymRegisterFile -> CompoundReg -> SymRegisterFile
 
-unsetRegisterValue regFile reg =
-  let (ranges, _) = unzip regFile
-      newRanges = removeRegister ranges reg
-  in map (\x -> (x, fromJust $ getRegisterValue regFile x)) newRanges
+unsetRegisterValue regFile reg = setRegisterValue regFile reg (UndefinedExpr $ getRegisterSize reg)
 
 -- Get the register values from the register file
+
+getRegisterValues :: SymRegisterFile -> [(X86.X86Reg, Expr)]
 
 getRegisterValues regFile =
   map (\(x, y) -> (x, getRegisterValue regFile y)) (filter (isRegisterDefined regFile . snd) x86RegisterMap)
@@ -178,7 +201,7 @@ symEval cin (ExtractExpr a b c) =
     (BvExpr d) -> BvExpr (bvextract a b d)
     (c) -> ExtractExpr a b c
 
-symEval cin (GetReg bs) = fromJust $ getRegisterValue (reg_file cin) bs
+symEval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 
 -- add ro memory (raise exception if written)
 -- add symbolic addressed memory (example stack, no concrete values mapping references)
