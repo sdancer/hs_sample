@@ -16,7 +16,7 @@ main = do
   print "this should be in test/"
   -- Ignoring the changes to the flag registers, the following is what happens
 
-  let input = [0xB8, 0x02, 0x00, 0x00, 0x00, 0xB8, 0x02, 0x00, 0x00, 0x00]
+  let input = [0xBC, 0x64, 0x00, 0x00, 0x00, 0x50, 0xB8, 0x02, 0x00, 0x00, 0x00, 0x83, 0xC0, 0x0A, 0x58, 0x83, 0xE8, 0x03]
       modes = [Capstone.CsMode32]
   asm <- disasm_buf modes input
   let lifted = case asm of
@@ -25,4 +25,4 @@ main = do
       oneblock = foldl (\y (a, b) -> y ++ b) [] lifted
   -- print lifted
   -- print oneblock
-  print (getRegisterValues (reg_file (fst (symSteps (basicX86Context modes lifted)))))
+  print {-(getRegisterValues (reg_file (fst-} (symSteps (labelStmts lifted) (basicX86Context modes)){-)))-}

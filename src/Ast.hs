@@ -256,7 +256,7 @@ data Expr =
   | LetExpr String Expr Expr
   | LnotExpr Expr
   | LorExpr Expr Expr
-  | ReferenceExpr --fix
+  | ReferenceExpr Int Int
   | StringExpr String
   | SxExpr Int Expr
   | VariableExpr
@@ -270,9 +270,14 @@ data Expr =
 -- are not composable.
 
 data Stmt =
-    Store Int Expr Expr
+    Store Expr Expr
   | SetReg CompoundReg Expr
   deriving (Eq, Show)
+
+-- Same as a statement but with an integer label to identify it. This type is necessary
+-- for the purposes of referring to past expressions
+
+type LbldStmt = (Int, Stmt)
 
 getExprSize :: Expr -> Int
 
@@ -321,6 +326,8 @@ getExprSize (LandExpr a b) = getExprSize a
 getExprSize (LnotExpr a) = getExprSize a
 
 getExprSize (LorExpr a b) = getExprSize a
+
+getExprSize (ReferenceExpr a b) = a
 
 getExprSize (SxExpr a b) = a + getExprSize b
 

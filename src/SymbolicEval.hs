@@ -72,6 +72,8 @@ getRegisterValue regFile reg =
 
 replaceExpr :: Int -> Expr -> Expr -> Expr
 
+-- The entire expression is being replaced
+replaceExpr l a b | getExprSize a == getExprSize b = b
 -- A part of a literal is being replaced by another literal
 replaceExpr l (BvExpr a) (BvExpr b) = BvExpr $ bvreplace a l b
 -- The current replacement coincides with a previous replacement
@@ -107,33 +109,33 @@ getRegisterValues regFile =
 
 -- Gets the specified bytes from memory
 
-getMemoryValue :: [(Int, Int)] -> [Int] -> Maybe BitVector
+getMemoryValue :: [(Int, Expr)] -> (Int, Int) -> Expr
 
-getMemoryValue _ [] = Just empty
-
-getMemoryValue mem (b:bs) =
-  case (lookup b mem, getMemoryValue mem bs) of
-    (Just x, Just y) -> Just (bvconcat y (intToBv x))
-    _ -> Nothing
+getMemoryValue mem (a,b) =
+  let exprSize = (b-a) * byte_size_bit
+      setByte expr offset =
+        ReplaceExpr (offset*byte_size_bit) expr $
+          case lookup (a+offset) mem of
+            Just x -> x
+            _ -> Load 1 (BvExpr $ intToBv (a+offset))
+  in foldl setByte (UndefinedExpr exprSize) [0..b-a]
 
 -- Represents the state of a processor: register file contents, data memory contents, and
 -- the instruction memory.
 
 data SymExecutionContext = SymExecutionContext {
   reg_file :: SymRegisterFile, -- Holds the contents and validity of the processor registers
-  memory :: [(Int, Int)], -- Holds the contents and validity of the processor memory
-  stmts :: [(Int, [Stmt])], -- Holds the instructions to be executed and their memory addresses
+  memory :: [(Int, Expr)], -- Holds the contents and validity of the processor memory
   proc_modes :: [CsMode] -- Holds the processor information that effects interpretation of instructions
 } deriving (Eq, Show)
 
 -- Creates a context where the memory and the register file are empty.
 
-basicX86Context :: [CsMode] -> [(Int, [Stmt])] -> SymExecutionContext
+basicX86Context :: [CsMode] -> SymExecutionContext
 
-basicX86Context modes stmts = SymExecutionContext {
+basicX86Context modes = SymExecutionContext {
   memory = [],
   reg_file = emptyRegisterFile,
-  stmts = stmts,
   proc_modes = modes
 }
 
@@ -210,57 +212,77 @@ symEval cin (Load a b) =
   case (symEval cin b) of
     (BvExpr memStartBv) ->
       let memStart = bvToInt memStartBv
-          memVal = getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
-      in case memVal of
-        Just x -> BvExpr x
-        Nothing -> Load a (BvExpr memStartBv)
+      in getMemoryValue (memory cin) (memStart,memStart + a - 1)
     (b) -> Load a b
 
 symEval cin expr = expr
 
-symExec :: SymExecutionContext -> Stmt -> (SymExecutionContext, Stmt)
+-- Put the given expression into memory starting at the given address and return the new
+-- context.
 
--- Symbolically executes a SetReg operation by either simplifying assignment value to a
--- literal then putting it into the register file, or by undefining the target register
--- to keep later statements symbolic.
+updateMemory :: SymExecutionContext -> Int -> Expr -> SymExecutionContext
 
-symExec cin (SetReg bs a) =
-  let c = symEval cin a
-      nreg = setRegisterValue (reg_file cin) bs c
-  in (cin { reg_file = nreg }, SetReg bs c)
+updateMemory cin address val =
+  let bc = div (getExprSize val) byte_size_bit
+      updateByte mem x =
+        assign mem (address + x, extractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
+      nmem = foldl updateByte (memory cin) [0..bc]
+  in cin { memory = nmem }
 
+-- A static expression is one whose value is not affected by a change in context. If the
+-- input expression is a literal or a reference to some expression, then it is already
+-- static. Otherwise return a reference to this expression.
 
-symExec cin (Store n dst val) =
+toStaticExpr :: Expr -> Int -> Expr
+
+toStaticExpr exprVal id = case exprVal of
+  -- If it is a literal, put it in register as is
+  BvExpr v -> BvExpr v
+  -- If it is an expression reference, put it in register as is
+  ReferenceExpr s v -> ReferenceExpr s v
+  -- Otherwise put in a reference to this expression
+  a -> ReferenceExpr (getExprSize a) id
+
+-- Symbolically executes the labelled statement on the given context, potentially
+-- simplifying it in the process. Put the result of the simplification or a reference to
+-- it into storage. Returns resulting context.
+
+symExec :: SymExecutionContext -> LbldStmt -> (SymExecutionContext, LbldStmt)
+
+symExec cin (id, SetReg bs a) =
+  let exprVal = symEval cin a
+      regVal = toStaticExpr exprVal id
+  in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, (id, SetReg bs exprVal))
+
+symExec cin (id, Store dst val) =
   let pdest = symEval cin dst
       pval = symEval cin val
-      bytes bs = shift bs (0-3)
+      memVal = toStaticExpr pval id
   in
       case pdest of
-        BvExpr a -> (updateMemory cin (bytes (bvlength a)) (bvToInt a) 0x1337, Store n pdest pval)
-        _ -> error $ "Store on symbolic mem not implemented"
+        BvExpr a -> (updateMemory cin (bvToInt a) memVal, (id, Store pdest pval))
+        _ -> error "Store on symbolic mem not implemented"
 
-updateMemory :: SymExecutionContext -> Int -> Int -> Int -> SymExecutionContext
+-- Labels all the statements in the instructions with a unique identifier
 
-updateMemory cin bc address val =
-    let nmem = foldl (\mem x -> assign mem ((address+x), (shift val (0-(8 * x))) .&. 0xff)) (memory cin) [0..bc-1]
-    in cin { memory = nmem }
+labelStmts :: [(Int, [Stmt])] -> [(Int, [LbldStmt])]
 
--- Executes a group of statements pointed to by the instruction pointer and returns the
--- new context
+labelStmts stmts = snd $ mapAccumL mapInstr 0 stmts
+  where mapInstr start (x,y) = let (acc, stmts) = mapStmts start y in (acc, (x, stmts))
+        mapStmts start stmts = mapAccumL (\x y -> (x+1, (x,y))) start stmts
 
-symSteps :: SymExecutionContext -> (SymExecutionContext, [(Int, [Stmt])])
+-- Symbolically executes the list of instructions in the given execution context and
+-- returns the resulting context alongside the simplifications of the instructions.
 
-symSteps cin | stmts cin == [] = (cin, [])
+symSteps :: [(Int, [LbldStmt])] -> SymExecutionContext -> (SymExecutionContext, [(Int, [LbldStmt])])
 
-symSteps cin =
-    let x = snd (head (stmts cin)) in
-      let process ec [] ns = (ec {
-            stmts = tail (stmts ec)
-          }, (fst (head (stmts cin)), reverse ns))
-          process ec (x:xs) ns =
-            let (nec, s) = symExec ec x
-            in process nec xs (s:ns)
-          (fec, ent) = process cin x []
-          (ffec, ents) = symSteps fec
-      in (ffec, (ent:ents))
+symSteps [] cin = (cin, [])
+
+symSteps stmts cin =
+  let x = snd (head stmts) in
+    let execStmts ec [] ns = (ec, (fst (head stmts), reverse ns))
+        execStmts ec (x:xs) ns = let (nec, s) = symExec ec x in execStmts nec xs (s:ns)
+        (nextEc, simpInstr) = execStmts cin x []
+        (finalEc, simpInstrs) = symSteps (tail stmts) nextEc
+    in (finalEc, simpInstr:simpInstrs)
 

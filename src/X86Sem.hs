@@ -75,7 +75,7 @@ store_stmt :: [CsMode] -> CsX86Op -> Expr -> Stmt
 store_stmt modes operand store_what =
   case (value operand) of
     (Reg reg) -> SetReg (fromX86Reg reg) store_what
-    (Mem mem) -> Store (convert $ size operand) (getLeaAst modes mem) store_what
+    (Mem mem) -> Store (getLeaAst modes mem) store_what
     _ -> error "Target of store operation is neither a register nor a memory operand."
 
 -- Make operation to set the zero flag to the value that it would have after some operation
@@ -331,7 +331,7 @@ push_s modes inst =
   in [
       inc_insn_ptr modes inst,
       SetReg sp (BvsubExpr (GetReg sp) (BvExpr (bitVector (convert op_size) (arch_byte_size * 8)))),
-      Store op_size (GetReg sp) (ZxExpr ((op_size - (convert $ size src)) * 8) (getOperandAst modes src))
+      Store (GetReg sp) (ZxExpr ((op_size - (convert $ size src)) * 8) (getOperandAst modes src))
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
