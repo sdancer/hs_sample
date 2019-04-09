@@ -26,7 +26,8 @@ data X86Flag =
   | X86FlagDf | X86FlagOf | X86FlagIopl | X86FlagNt | X86FlagRf | X86FlagVm | X86FlagAc
   | X86FlagVif | X86FlagVip | X86FlagId deriving (Eq, Show)
 
--- A representation of a register as a list of indicies. Enables overlapping registers.
+-- A representation of a register as a pair indicating the lower (inclusive) and upper bit
+-- (exclusive) indicies. Enables overlapping registers.
 
 type CompoundReg = (Int, Int)
 
@@ -108,9 +109,9 @@ fromX86Flag reg = case lookup reg x86FlagMap of
 
 -- Gets the size of the given register in bits
 
-getRegSize :: CompoundReg -> Int
+getRegisterSize :: CompoundReg -> Int
 
-getRegSize (l, h) = h - l
+getRegisterSize (l, h) = h - l
 
 -- Gets the stack register for the given processor mode
 
@@ -146,42 +147,6 @@ get_arch_bit_size :: [CsMode] -> Int
 
 get_arch_bit_size = (* 8) . get_arch_byte_size
 
--- Get the given bit of the integer
-
-getBit :: Int -> Int -> Int
-
-getBit value bit = if testBit value bit then 1 else 0
-
-data RegisterFile = RegisterFile {
-  ranges :: [CompoundReg], -- The ranges where registers are defined
-  values :: BitVector -- Sequential storage of the bits of the registers
-} deriving (Eq, Show)
-
--- An empty register file for convenience
-
-emptyRegisterFile :: RegisterFile
-
-emptyRegisterFile = RegisterFile { ranges = [], values = bitVector 0 reg_file_bits }
-
--- Determines if the given register has a definite value in the register file
-
-isRegisterDefined :: RegisterFile -> CompoundReg -> Bool
-
-isRegisterDefined regFile reg = or (map (isSubregisterOf reg) (ranges regFile))
-
--- Gets the value of the specified compound register from the register file
-
-getRegisterValue :: RegisterFile -> CompoundReg -> Maybe BitVector
-
--- Extracts the register value from the register file if compound register is a subset of ranges
-
-getRegisterValue regFile (l, h) | isRegisterDefined regFile (l, h) =
-  Just (bvextract l h (values regFile))
-
--- Otherwise the desired register has not yet been defined
-
-getRegisterValue _ _ = Nothing
-
 -- Adds the given register to the given list taking care to combine those that overlap
 
 addRegister :: [CompoundReg] -> CompoundReg -> [CompoundReg]
@@ -210,37 +175,23 @@ removeRegister regs (l1,h1) =
         else [(l2,h2)]
   in foldl (++) [] (map tryRemove regs)
 
--- Updates the given register file by putting the given value in the given register
-
-update_reg_file :: RegisterFile -> CompoundReg -> BitVector -> RegisterFile
-
-update_reg_file regs (l, h) val =
-  let new_values = bvreplace (values regs) l val
-      new_ranges = addRegister (ranges regs) (l, h)
-  in RegisterFile {values = new_values, ranges = new_ranges}
-
--- Gets the specified bytes from memory
-
-getMemoryValue :: [(Int, Int)] -> [Int] -> Maybe BitVector
-
-getMemoryValue _ [] = Just empty
-
-getMemoryValue mem (b:bs) =
-  case (lookup b mem, getMemoryValue mem bs) of
-    (Just x, Just y) -> Just (bvconcat y (intToBv x))
-    _ -> Nothing
-
--- Get the register values from the register file
-
-getRegisterValues regFile =
-  map (\(x, y) -> (x, getRegisterValue regFile y)) (filter (\(x, y) -> isRegisterDefined regFile y) x86RegisterMap)
-
 -- Checks if a register is a subregister of another register
 
 isSubregisterOf :: CompoundReg -> CompoundReg -> Bool
 
-isSubregisterOf (childL, childH) (parentL, parentH) =
-  (parentL <= childL) && (parentH >= childH)
+isSubregisterOf (childL, childH) (parentL, parentH) = (parentL <= childL) && (parentH >= childH)
+
+-- Gets the largest register containing this register
+
+getRootRegister :: CompoundReg -> CompoundReg
+
+getRootRegister reg = foldl (\x y -> if isSubregisterOf x y then y else x) reg (snd $ unzip x86RegisterMap)
+
+-- Subtracts one register from another. Useful for obtaining a register's range relative to another register
+
+registerSub :: CompoundReg -> CompoundReg -> CompoundReg
+
+registerSub (l1, h1) (l2, h2) = (l1-l2, h1-l2)
 
 -- Checks if the given register is a segment register
 
@@ -298,19 +249,19 @@ data Expr =
   | DistinctExpr Expr Expr
   | EqualExpr Expr Expr
   | ExtractExpr Int Int Expr -- ! `((_ extract <high> <low>) <expr>)` node
-  | ReplaceExpr Int Int Expr Expr
+  | ReplaceExpr Int Expr Expr
   | IffExpr Expr Expr -- ! `(iff <expr1> <expr2>)`
   | IteExpr Expr Expr Expr -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
   | LandExpr Expr Expr
   | LetExpr String Expr Expr
   | LnotExpr Expr
   | LorExpr Expr Expr
-  | ReferenceExpr --fix
+  | ReferenceExpr Int Int
   | StringExpr String
   | SxExpr Int Expr
   | VariableExpr
   | ZxExpr Int Expr
-  | UndefinedExpr -- The undefined value
+  | UndefinedExpr Int -- The undefined value
   | Load Int Expr
   | GetReg CompoundReg
   deriving (Eq, Show)
@@ -319,7 +270,72 @@ data Expr =
 -- are not composable.
 
 data Stmt =
-    Store Int Expr Expr
+    Store Expr Expr
   | SetReg CompoundReg Expr
   deriving (Eq, Show)
+
+-- Same as a statement but with an integer label to identify it. This type is necessary
+-- for the purposes of referring to past expressions
+
+type LbldStmt = (Int, Stmt)
+
+getExprSize :: Expr -> Int
+
+getExprSize (BvaddExpr a b) = getExprSize a
+
+getExprSize (BvandExpr a b) = getExprSize a
+
+getExprSize (BvashrExpr a b) = getExprSize a
+
+getExprSize (BvlshrExpr a b) = getExprSize a
+
+getExprSize (BvnandExpr a b) = getExprSize a
+
+getExprSize (BvnegExpr a) = getExprSize a
+
+getExprSize (BvnorExpr a b) = getExprSize a
+
+getExprSize (BvnotExpr a) = getExprSize a
+
+getExprSize (BvorExpr a b) = getExprSize a
+
+getExprSize (BvrolExpr a b) = getExprSize a
+
+getExprSize (BvrorExpr a b) = getExprSize a
+
+getExprSize (BvsubExpr a b) = getExprSize a
+
+getExprSize (BvxnorExpr a b) = getExprSize a
+
+getExprSize (BvxorExpr a b) = getExprSize a
+
+getExprSize (BvExpr a) = bvlength a
+
+getExprSize (ConcatExpr a) = sum $ map getExprSize a
+
+getExprSize (EqualExpr a b) = getExprSize a
+
+getExprSize (ExtractExpr l h e) = h - l
+
+getExprSize (ReplaceExpr l a b) = getExprSize a
+
+getExprSize (IteExpr a b c) = getExprSize b
+
+getExprSize (LandExpr a b) = getExprSize a
+
+getExprSize (LnotExpr a) = getExprSize a
+
+getExprSize (LorExpr a b) = getExprSize a
+
+getExprSize (ReferenceExpr a b) = a
+
+getExprSize (SxExpr a b) = a + getExprSize b
+
+getExprSize (ZxExpr a b) = a + getExprSize b
+
+getExprSize (UndefinedExpr a) = a
+
+getExprSize (Load a b) = a * byte_size_bit
+
+getExprSize (GetReg a) = getRegisterSize a
 
