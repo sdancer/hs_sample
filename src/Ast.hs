@@ -212,58 +212,82 @@ is_control_reg reg = elem reg
 -- context but are composable.
 
 data Expr =
-    BvaddExpr Expr Expr
-  | BvandExpr Expr Expr
-  | BvashrExpr Expr Expr
-  | BvlshrExpr Expr Expr
-  | BvmulExpr Expr Expr
-  | BvnandExpr Expr Expr
-  | BvnegExpr Expr
-  | BvnorExpr Expr Expr
-  | BvnotExpr Expr
-  | BvorExpr Expr Expr
-  | BvrolExpr Expr Expr
-  | BvrorExpr Expr Expr -- can lit
-  | BvsdivExpr Expr Expr
-  | BvsgeExpr Expr Expr
-  | BvsgtExpr Expr Expr
-  | BvshlExpr Expr Expr
-  | BvsleExpr Expr Expr
-  | BvsltExpr Expr Expr
-  | BvsmodExpr Expr Expr
-  | BvsremExpr Expr Expr
-  | BvsubExpr Expr Expr
-  | BvudivExpr Expr Expr
-  | BvugeExpr Expr Expr
-  | BvugtExpr Expr Expr
-  | BvuleExpr Expr Expr
-  | BvultExpr Expr Expr
-  | BvuremExpr Expr Expr
-  | BvxnorExpr Expr Expr
-  | BvxorExpr Expr Expr
-  | BvExpr BitVector
+  -- Literal bit-vector. The size of this expression equals that of the bit-vector.
+  BvExpr BitVector
+  
+  -- The following operations take and return equally sized operands
+  | BvaddExpr Expr Expr -- Add
+  | BvandExpr Expr Expr -- Bitwise and
+  | BvashrExpr Expr Expr -- Arithmetic shift right
+  | BvlshrExpr Expr Expr -- Logical shift right
+  | BvmulExpr Expr Expr -- Multiply
+  | BvnandExpr Expr Expr -- Bitwise nand
+  | BvnegExpr Expr -- Negate
+  | BvnorExpr Expr Expr -- Bitwise nor
+  | BvnotExpr Expr -- Bitwise not
+  | BvorExpr Expr Expr -- Bitwise or
+  | BvrolExpr Expr Expr -- Rotate left
+  | BvrorExpr Expr Expr -- Rotate right
+  | BvsdivExpr Expr Expr -- Signed division
+  | BvsgeExpr Expr Expr -- Signed greater than or equal
+  | BvsgtExpr Expr Expr -- Signed greater than
+  | BvshlExpr Expr Expr -- Shift left
+  | BvsleExpr Expr Expr -- Signed less than or equal
+  | BvsltExpr Expr Expr -- Signed less than
+  | BvsmodExpr Expr Expr -- Signed modulo
+  | BvsremExpr Expr Expr -- Signed remainder
+  | BvsubExpr Expr Expr -- Subtraction
+  | BvudivExpr Expr Expr -- Unsigned division
+  | BvugeExpr Expr Expr -- Unsigned greater than or equal
+  | BvugtExpr Expr Expr -- Unsigned greater than
+  | BvuleExpr Expr Expr -- Unsigned less than or equal
+  | BvultExpr Expr Expr -- Unsigned less than
+  | BvuremExpr Expr Expr -- Unsigned remainder
+  | BvxnorExpr Expr Expr -- Bitwise xnor
+  | BvxorExpr Expr Expr -- Bitwise xor
+  | EqualExpr Expr Expr -- Returns 1 is equal, 0 otherwise
+  | IteExpr Expr Expr Expr -- If first expression is non-zero then return second, otherwise third
+  | LandExpr Expr Expr -- Logical and
+  | LnotExpr Expr -- Logical not
+  | LorExpr Expr Expr -- Logical or
+  
+  -- Takes in order the low bit index (inclusive), the high bit index (exclusive), and the
+  -- expression from which to extract. Size of resulting expression is the difference
+  -- between the indicies.
+  | ExtractExpr Int Int Expr
+  -- Takes in order the low bit index (inclusive), the expression whose part starting at
+  -- the aforementioned bit is to be replaced, and the expression that is to be used as
+  -- the replacement. Size of returned expression equals that of first supplied expression.
+  | ReplaceExpr Int Expr Expr
+  -- Takes in order the size of the expression that is being referenced, and the
+  -- identifier of the expression being reference. Size of this expression equals the size
+  -- of the expression being referenced.
+  | ReferenceExpr Int Int
+  -- Sign extends the given expression by the given amount. Size of this expression equals
+  -- the sum of the given amount and the size of the given expression.
+  | SxExpr Int Expr
+  -- Zero extends the given expression by the given amount. Size of this expression equals
+  -- the sum of the given amount and the size of the given expression.
+  | ZxExpr Int Expr
+  -- An undefined expression of the given size.
+  | UndefinedExpr Int
+  -- Takes in order the number of bytes to extract from memory, and the address in memory
+  -- from which to obtain data. Size of this expression equals the number of bits to be
+  -- extracted from memory.
+  | Load Int Expr
+  -- Obtains the value of the given register. The size of this expression equals the size,
+  -- in bits, of the register.
+  | GetReg CompoundReg
+  
   | CompoundExpr -- ! `[<expr1> <expr2> <expr3> ...]` node
   | ConcatExpr [Expr]
   | DecimalExpr Int --float?
   | DeclareExpr --wtf?
   | DistinctExpr Expr Expr
-  | EqualExpr Expr Expr
-  | ExtractExpr Int Int Expr -- ! `((_ extract <high> <low>) <expr>)` node
-  | ReplaceExpr Int Expr Expr
   | IffExpr Expr Expr -- ! `(iff <expr1> <expr2>)`
-  | IteExpr Expr Expr Expr -- ! `(ite <ifExpr> <thenExpr> <elseExpr>)`
-  | LandExpr Expr Expr
   | LetExpr String Expr Expr
-  | LnotExpr Expr
-  | LorExpr Expr Expr
-  | ReferenceExpr Int Int
   | StringExpr String
-  | SxExpr Int Expr
   | VariableExpr
-  | ZxExpr Int Expr
-  | UndefinedExpr Int -- The undefined value
-  | Load Int Expr
-  | GetReg CompoundReg
   deriving (Eq, Show)
 
 -- The statements that the machine code will be lifted to. Statements modify context and
