@@ -247,42 +247,33 @@ toStaticExpr exprVal id = case exprVal of
 -- simplifying it in the process. Put the result of the simplification or a reference to
 -- it into storage. Returns resulting context.
 
-symExec :: SymExecutionContext -> LbldStmt -> (SymExecutionContext, LbldStmt)
+symExec :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
 
-symExec cin (id, SetReg bs a) =
+symExec cin (SetReg id bs a) =
   let exprVal = symEval cin a
       regVal = toStaticExpr exprVal id
-  in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, (id, SetReg bs exprVal))
+  in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
 
-symExec cin (id, Store dst val) =
+symExec cin (Store id dst val) =
   let pdest = symEval cin dst
       pval = symEval cin val
       memVal = toStaticExpr pval id
   in
       case pdest of
-        BvExpr a -> (updateMemory cin (bvToInt a) memVal, (id, Store pdest pval))
+        BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)
         _ -> error "Store on symbolic mem not implemented"
 
--- Labels all the statements in the instructions with a unique identifier
+symExec cin (Compound id stmts) = (i, Compound id s)
+  where (i,s) = mapAccumL symExec cin stmts
 
-labelStmts :: [(Int, [Stmt])] -> [(Int, [LbldStmt])]
+-- Labels all the statements in the instructions with a new unique identifier
 
-labelStmts stmts = snd $ mapAccumL mapInstr 0 stmts
-  where mapInstr start (x,y) = let (acc, stmts) = mapStmts start y in (acc, (x, stmts))
-        mapStmts start stmts = mapAccumL (\x y -> (x+1, (x,y))) start stmts
+labelStmts :: Int -> Stmt a -> (Int, Stmt Int)
 
--- Symbolically executes the list of instructions in the given execution context and
--- returns the resulting context alongside the simplifications of the instructions.
+labelStmts start (SetReg id bs a) = (start + 1, SetReg start bs a)
 
-symSteps :: [(Int, [LbldStmt])] -> SymExecutionContext -> (SymExecutionContext, [(Int, [LbldStmt])])
+labelStmts start (Store id dst val) = (start + 1, Store start dst val)
 
-symSteps [] cin = (cin, [])
-
-symSteps stmts cin =
-  let x = snd (head stmts) in
-    let execStmts ec [] ns = (ec, (fst (head stmts), reverse ns))
-        execStmts ec (x:xs) ns = let (nec, s) = symExec ec x in execStmts nec xs (s:ns)
-        (nextEc, simpInstr) = execStmts cin x []
-        (finalEc, simpInstrs) = symSteps (tail stmts) nextEc
-    in (finalEc, simpInstr:simpInstrs)
+labelStmts start (Compound id stmts) = (i, Compound start s)
+  where (i,s) = mapAccumL labelStmts (start + 1) stmts
 

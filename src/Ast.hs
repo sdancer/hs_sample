@@ -19,7 +19,7 @@ qqword_size_bit = 256
 dqqword_size_bit = 512
 
 reg_file_bits :: Num a => a
-reg_file_bits = 192 * 8
+reg_file_bits = 192 * byte_size_bit
 
 data X86Flag =
     X86FlagCf | X86FlagPf | X86FlagAf | X86FlagZf | X86FlagSf | X86FlagTf | X86FlagIf
@@ -145,7 +145,7 @@ get_arch_byte_size modes =
 
 get_arch_bit_size :: [CsMode] -> Int
 
-get_arch_bit_size = (* 8) . get_arch_byte_size
+get_arch_bit_size = (* byte_size_bit) . get_arch_byte_size
 
 -- Adds the given register to the given list taking care to combine those that overlap
 
@@ -180,6 +180,12 @@ removeRegister regs (l1,h1) =
 isSubregisterOf :: CompoundReg -> CompoundReg -> Bool
 
 isSubregisterOf (childL, childH) (parentL, parentH) = (parentL <= childL) && (parentH >= childH)
+
+-- Checks if the given register is contained within the list
+
+isRegisterContained :: [CompoundReg] -> CompoundReg -> Bool
+
+isRegisterContained regs reg = or $ map (isSubregisterOf reg) regs
 
 -- Gets the largest register containing this register
 
@@ -260,8 +266,8 @@ data Expr =
   -- the replacement. Size of returned expression equals that of first supplied expression.
   | ReplaceExpr Int Expr Expr
   -- Takes in order the size of the expression that is being referenced, and the
-  -- identifier of the expression being reference. Size of this expression equals the size
-  -- of the expression being referenced.
+  -- identifier of the expression being referenced. Size of this expression equals the
+  -- size of the expression being referenced.
   | ReferenceExpr Int Int
   -- Sign extends the given expression by the given amount. Size of this expression equals
   -- the sum of the given amount and the size of the given expression.
@@ -279,7 +285,6 @@ data Expr =
   -- in bits, of the register.
   | GetReg CompoundReg
   
-  | CompoundExpr -- ! `[<expr1> <expr2> <expr3> ...]` node
   | ConcatExpr [Expr]
   | DecimalExpr Int --float?
   | DeclareExpr --wtf?
@@ -293,15 +298,21 @@ data Expr =
 -- The statements that the machine code will be lifted to. Statements modify context and
 -- are not composable.
 
-data Stmt =
-    Store Expr Expr
-  | SetReg CompoundReg Expr
+data Stmt a =
+  -- Takes in order the id of the statement, the address at which to put the expression,
+  -- and the expression to store.
+    Store a Expr Expr
+  -- Takes in order the id of the statement, the register in which to put the expression,
+  -- and the expression to store. The size of the expression must equal the size of the
+  -- register.
+  | SetReg a CompoundReg Expr
+  -- Takes in order the id of the statement, and an ordered list of statements that will
+  -- be executed when this statement is executed.
+  | Compound a [Stmt a]
   deriving (Eq, Show)
 
--- Same as a statement but with an integer label to identify it. This type is necessary
--- for the purposes of referring to past expressions
-
-type LbldStmt = (Int, Stmt)
+-- The size of an expression can be determined statically directly from it and its
+-- subexpressions.
 
 getExprSize :: Expr -> Int
 
@@ -362,4 +373,66 @@ getExprSize (UndefinedExpr a) = a
 getExprSize (Load a b) = a * byte_size_bit
 
 getExprSize (GetReg a) = getRegisterSize a
+
+-- Creates a post-ordered list of expressions from the given expression
+
+flatten :: Expr -> [Expr]
+
+flatten (BvExpr bv) = [(BvExpr bv)]
+
+flatten (BvaddExpr a b) = flatten a ++ flatten b ++ [BvaddExpr a b]
+
+flatten (BvandExpr a b) = flatten a ++ flatten b ++ [BvandExpr a b]
+
+flatten (BvashrExpr a b) = flatten a ++ flatten b ++ [BvashrExpr a b]
+
+flatten (BvlshrExpr a b) = flatten a ++ flatten b ++ [BvlshrExpr a b]
+
+flatten (BvnandExpr a b) = flatten a ++ flatten b ++ [BvnandExpr a b]
+
+flatten (BvnegExpr a) = flatten a ++ [BvnegExpr a]
+
+flatten (BvnorExpr a b) = flatten a ++ flatten b ++ [BvnorExpr a b]
+
+flatten (BvnotExpr a) = flatten a ++ [BvnotExpr a]
+
+flatten (BvorExpr a b) = flatten a ++ flatten b ++ [BvorExpr a b]
+
+flatten (BvrolExpr a b) = flatten a ++ flatten b ++ [BvrolExpr a b]
+
+flatten (BvrorExpr a b) = flatten a ++ flatten b ++ [BvrorExpr a b]
+
+flatten (BvsubExpr a b) = flatten a ++ flatten b ++ [BvsubExpr a b]
+
+flatten (BvxnorExpr a b) = flatten a ++ flatten b ++ [BvxnorExpr a b]
+
+flatten (BvxorExpr a b) = flatten a ++ flatten b ++ [BvxorExpr a b]
+
+flatten (ConcatExpr a) = foldl (++) [] (map flatten a) ++ [ConcatExpr a]
+
+flatten (EqualExpr a b) = flatten a ++ flatten b ++ [EqualExpr a b]
+
+flatten (ExtractExpr l h e) = flatten e ++ [ExtractExpr l h e]
+
+flatten (ReplaceExpr l a b) = flatten a ++ flatten b ++ [ReplaceExpr l a b]
+
+flatten (IteExpr a b c) = flatten a ++ flatten b ++ flatten c ++ [IteExpr a b c]
+
+flatten (LandExpr a b) = flatten a ++ flatten b ++ [LandExpr a b]
+
+flatten (LnotExpr a) = flatten a ++ [LnotExpr a]
+
+flatten (LorExpr a b) = flatten a ++ flatten b ++ [LorExpr a b]
+
+flatten (ReferenceExpr a b) = [ReferenceExpr a b]
+
+flatten (SxExpr a b) = flatten b ++ [SxExpr a b]
+
+flatten (ZxExpr a b) = flatten b ++ [ZxExpr a b]
+
+flatten (UndefinedExpr a) = [UndefinedExpr a]
+
+flatten (Load a b) = flatten b ++ [Load a b]
+
+flatten (GetReg a) = [GetReg a]
 

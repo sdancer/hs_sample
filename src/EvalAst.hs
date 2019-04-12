@@ -82,20 +82,17 @@ getMemoryValue mem (b:bs) =
 data NumExecutionContext = NumExecutionContext {
   reg_file :: NumRegisterFile, -- Holds the contents and validity of the processor registers
   memory :: [(Int, Int)], -- Holds the contents and validity of the processor memory
-  stmts :: [(Int, [Stmt])], -- Holds the instructions to be executed and their memory addresses
   proc_modes :: [CsMode] -- Holds the processor information that effects interpretation of instructions
 } deriving (Eq, Show)
 
 -- Creates a context where the instruction pointer points to the first instruction, and
 -- memory and the register file are empty.
 
-basicX86Context :: [CsMode] -> [(Int, [Stmt])] -> NumExecutionContext
+basicX86Context :: [CsMode] -> NumExecutionContext
 
-basicX86Context modes stmts = NumExecutionContext {
+basicX86Context modes = NumExecutionContext {
   memory = [],
-  -- Point the instruction pointer to the first instruction on the list
-  reg_file = updateRegisterFile emptyRegisterFile (get_insn_ptr modes) (bitVector (convert (fst (head stmts))) (get_arch_bit_size modes)),
-  stmts = stmts,
+  reg_file = updateRegisterFile emptyRegisterFile (get_insn_ptr modes) (bitVector 0 (get_arch_bit_size modes)),
   proc_modes = modes
 }
 
@@ -155,34 +152,47 @@ assign ((c, d) : es) (a, b) | c == a = (a, b) : es
 
 assign ((c, d) : es) (a, b) | c /= a = (c, d) : assign es (a, b)
 
-exec :: NumExecutionContext -> Stmt -> NumExecutionContext
+exec :: NumExecutionContext -> Stmt a -> NumExecutionContext
 
 -- Executes a SetReg operation by setting each byte of the register separately
 
-exec cin (SetReg bs a) =
+exec cin (SetReg _ bs a) =
   cin { reg_file = updateRegisterFile (reg_file cin) bs (eval cin a) }
 
 -- Executes a Store operation by setting each byte of memory separately
 
-exec cin (Store dst val) =
+exec cin (Store _ dst val) =
   let updateMemory mem 0 _ _ = mem
       updateMemory mem c d v =
         updateMemory (assign mem (d, (v .&. (bit byte_size_bit - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
   in cin { memory = updateMemory (memory cin) (getExprSize val) (bvToInt (eval cin dst)) (bvToInt (eval cin val)) }
 
+-- Executes a Compound statement by executing its constituents in order
+
+exec cin (Compound _ stmts) = foldl exec cin stmts
+
+-- Lookup the statement with the given id
+
+lookupStmt :: Eq a => [Stmt (Maybe a)] -> a -> Stmt (Maybe a)
+
+lookupStmt (SetReg (Just v) bs a : stmts) id | v == id = SetReg (Just v) bs a
+
+lookupStmt (Store (Just v) bs a : stmts) id | v == id = Store (Just v) bs a
+
+lookupStmt (Compound (Just v) a : stmts) id | v == id = Compound (Just v) a
+
+lookupStmt (stmt : stmts) id = lookupStmt stmts id
+
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
 
-step :: NumExecutionContext -> NumExecutionContext
+step :: [Stmt (Maybe Int)] -> NumExecutionContext -> NumExecutionContext
 
-step cin =
+step stmts cin =
   let procInsnPtr = get_insn_ptr (proc_modes cin)
   in case getRegisterValue (reg_file cin) procInsnPtr of
     Nothing -> error "Instruction pointer has not yet been set."
-    Just registerValue ->
-      case lookup (bvToInt registerValue) (stmts cin) of
-        Nothing -> error "Instruction pointer has invalid value."
-        Just x -> foldl exec cin x
+    Just registerValue -> exec cin (lookupStmt stmts (bvToInt registerValue))
 
 -- Applies the given function on the given argument a given number of times
 
