@@ -227,7 +227,7 @@ substituteSimplify :: SymExecutionContext -> Expr -> Expr
 
 substituteSimplify cin expr =
   let nextExpr = simplifyExpr $ mapExpr (substituteStorage cin) expr
-  in if nextExpr == expr then nextExpr else {-substituteSimplify cin-} nextExpr
+  in if nextExpr == expr then nextExpr else substituteSimplify cin nextExpr
 
 -- Put the given expression into memory starting at the given address and return the new
 -- context.
