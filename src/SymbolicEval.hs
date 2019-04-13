@@ -41,22 +41,6 @@ isRegisterDefined :: SymRegisterFile -> CompoundReg -> Bool
 
 isRegisterDefined regFile reg = or (map (isSubregisterOf reg) (ranges regFile))
 
--- Extracts the expression in the given bit-range of the given expression
-
-extractExpr :: Int -> Int -> Expr -> Expr
-
--- The extraction is the entire expression
-extractExpr l h e | h - l == getExprSize e = e
--- The extraction is being done on a literal
-extractExpr l h (BvExpr a) = BvExpr $ bvextract l h a
--- The extraction is within the replacement expression
-extractExpr l h (ReplaceExpr a e f) | a <= l && h <= a + getExprSize f =
-  extractExpr y z f where y = l - a; z = h - a
--- The replacement expression is disjoint from the extraction
-extractExpr l h (ReplaceExpr a e f) | a + getExprSize f <= l || h <= a = extractExpr l h e
--- No simplification possible
-extractExpr l h e = ExtractExpr l h e
-
 -- Gets the value of the specified compound register from the register file
 
 getRegisterValue :: SymRegisterFile -> CompoundReg -> Expr
@@ -65,24 +49,8 @@ getRegisterValue regFile reg =
   let rootRegister = getRootRegister reg
       (l,h) = registerSub reg rootRegister
   in case lookup rootRegister regFile of
-    Just x -> extractExpr l h x
+    Just x -> simplifyExpr $ ExtractExpr l h x
     Nothing -> GetReg reg
-
--- Replace the expression in the given bit-range of the given expression
-
-replaceExpr :: Int -> Expr -> Expr -> Expr
-
--- The entire expression is being replaced
-replaceExpr l a b | getExprSize a == getExprSize b = b
--- A part of a literal is being replaced by another literal
-replaceExpr l (BvExpr a) (BvExpr b) = BvExpr $ bvreplace a l b
--- The current replacement coincides with a previous replacement
-replaceExpr l (ReplaceExpr a b c) e | l == a && getExprSize e == getExprSize c = ReplaceExpr l b e
--- The current replacement is disjoint from previous replacement
-replaceExpr l (ReplaceExpr a b c) e | l + getExprSize e <= a || a + getExprSize c <= l =
-  ReplaceExpr a (replaceExpr l b e) c
--- The current replacement cannot be simplified
-replaceExpr l f e = ReplaceExpr l f e
 
 -- Updates the given register file by putting the given value in the given register
 
@@ -91,7 +59,7 @@ setRegisterValue :: SymRegisterFile -> CompoundReg -> Expr -> SymRegisterFile
 setRegisterValue regFile reg val =
   let rootRegister = getRootRegister reg
       (l,h) = registerSub reg rootRegister
-      newRootExpr = replaceExpr l (getRegisterValue regFile rootRegister) val
+      newRootExpr = simplifyExpr $ ReplaceExpr l (getRegisterValue regFile rootRegister) val
   in assign regFile (rootRegister, newRootExpr)
 
 -- Updates the register file by removing the value in the given register
@@ -114,11 +82,11 @@ getMemoryValue :: [(Int, Expr)] -> (Int, Int) -> Expr
 getMemoryValue mem (a,b) =
   let exprSize = (b-a) * byte_size_bit
       setByte expr offset =
-        replaceExpr (offset*byte_size_bit) expr $
+        ReplaceExpr (offset*byte_size_bit) expr $
           case lookup (a+offset) mem of
             Just x -> x
             _ -> Load 1 (BvExpr $ intToBv (a+offset))
-  in foldl setByte (UndefinedExpr exprSize) [0..b-a-1]
+  in simplifyExpr $ foldl setByte (UndefinedExpr exprSize) [0..b-a-1]
 
 -- Represents the state of a processor: register file contents, data memory contents, and
 -- the instruction memory.
@@ -141,81 +109,125 @@ basicX86Context modes = SymExecutionContext {
 
 -- Simplifies the given expression in the given context
 
-symEval :: SymExecutionContext -> Expr -> Expr
+simplifyExpr :: Expr -> Expr
 
-symEval cin (BvxorExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvxorExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvxor abv bbv)
     (c, d) -> BvxorExpr c d
 
-symEval cin (BvandExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvandExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvand abv bbv)
     (c, d) -> BvandExpr c d
 
-symEval cin (BvorExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvorExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvor abv bbv)
     (c, d) -> BvorExpr c d
 
-symEval cin (BvnotExpr c) =
-  case (symEval cin c) of
+simplifyExpr (BvnotExpr c) =
+  case (simplifyExpr c) of
     (BvExpr abv) -> BvExpr (bvnot abv)
     (c) -> BvnotExpr c
 
-symEval cin (EqualExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (EqualExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (if equal abv bbv then one abv else zero abv)
     (c, d) -> EqualExpr c d
 
-symEval cin (BvaddExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvaddExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvadd abv bbv)
     (c, d) -> BvaddExpr c d
 
-symEval cin (BvsubExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvsubExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvsub abv bbv)
     (c, d) -> BvsubExpr c d
 
-symEval cin (BvlshrExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvlshrExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvlshr abv bbv)
     (c, d) -> BvlshrExpr c d
 
-symEval cin (ZxExpr a c) =
-  case (symEval cin c) of
+simplifyExpr (ZxExpr a c) =
+  case (simplifyExpr c) of
     (BvExpr bbv) -> BvExpr (zx a bbv)
     (c) -> ZxExpr a c
 
-symEval cin (IteExpr a b c) =
-  case (symEval cin a, symEval cin b, symEval cin c) of
+simplifyExpr (IteExpr a b c) =
+  case (simplifyExpr a, simplifyExpr b, simplifyExpr c) of
     (BvExpr a, b, c) -> if equal a (zero a) then c else b
     (a, b, c) -> IteExpr a b c
 
-symEval cin (ReplaceExpr b c d) =
-  case (symEval cin c, symEval cin d) of
+-- The entire expression is being replaced
+simplifyExpr (ReplaceExpr l a b) | getExprSize a == getExprSize b = simplifyExpr b
+-- Join together two adjacent replacements
+simplifyExpr (ReplaceExpr l (ReplaceExpr m b (ExtractExpr n p q)) (ExtractExpr r t u))
+    | l == m + (p-n) && p == r && q == u =
+  simplifyExpr (ReplaceExpr m b (ExtractExpr n t q))
+-- A part of a literal is being replaced by another literal
+simplifyExpr (ReplaceExpr l (BvExpr a) (BvExpr b)) = BvExpr $ bvreplace a l b
+-- The current replacement coincides with a previous replacement
+simplifyExpr (ReplaceExpr l (ReplaceExpr a b c) e) | l == a && getExprSize e == getExprSize c =
+  simplifyExpr (ReplaceExpr l b e)
+-- The current replacement is disjoint from previous replacement
+simplifyExpr (ReplaceExpr l (ReplaceExpr a b c) e) | l + getExprSize e <= a || a + getExprSize c <= l =
+  ReplaceExpr a (simplifyExpr $ ReplaceExpr l b e) c
+
+simplifyExpr (ReplaceExpr b c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr cbv, BvExpr dbv) -> BvExpr (bvreplace cbv b dbv)
     (c, d) -> ReplaceExpr b c d
 
-symEval cin (ExtractExpr a b c) =
-  case (symEval cin c) of
+-- The extraction is the entire expression
+simplifyExpr (ExtractExpr l h e) | h - l == getExprSize e = simplifyExpr e
+-- The extraction is being done on a literal
+simplifyExpr (ExtractExpr l h (BvExpr a)) = BvExpr $ bvextract l h a
+-- The extraction is within the replacement expression
+simplifyExpr (ExtractExpr l h (ReplaceExpr a e f)) | a <= l && h <= a + getExprSize f =
+  simplifyExpr (ExtractExpr y z f) where y = l - a; z = h - a
+-- The replacement expression is disjoint from the extraction
+simplifyExpr (ExtractExpr l h (ReplaceExpr a e f)) | a + getExprSize f <= l || h <= a =
+  simplifyExpr (ExtractExpr l h e)
+
+simplifyExpr (ExtractExpr a b c) =
+  case (simplifyExpr c) of
     (BvExpr d) -> BvExpr (bvextract a b d)
     (c) -> ExtractExpr a b c
 
-symEval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
+simplifyExpr (Load a b) = Load a (simplifyExpr b)
+
+simplifyExpr expr = expr
+
+-- If the supplied expression is GetReg or Load, then substitute it for its value.
+-- Otherwise leave the expression unchanged.
+
+substituteStorage :: SymExecutionContext -> Expr -> Expr
+
+substituteStorage cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 
 -- add ro memory (raise exception if written)
 -- add symbolic addressed memory (example stack, no concrete values mapping references)
 
-symEval cin (Load a b) =
-  case (symEval cin b) of
-    (BvExpr memStartBv) ->
-      let memStart = bvToInt memStartBv
-      in getMemoryValue (memory cin) (memStart,memStart + a)
-    (b) -> Load a b
+substituteStorage cin (Load a b) = case b of
+  (BvExpr memStartBv) ->
+    let memStart = bvToInt memStartBv
+    in getMemoryValue (memory cin) (memStart,memStart + a)
+  (b) -> Load a b
 
-symEval cin expr = expr
+substituteStorage cin expr = expr
+
+-- Substitute in all known values and simplify. The simplifying may cause a memory address
+-- to change from some expression to a literal. Hence the simplification should be
+-- followed by another attempt to substitute and simplify, ...
+
+substituteSimplify :: SymExecutionContext -> Expr -> Expr
+
+substituteSimplify cin expr =
+  let nextExpr = simplifyExpr $ mapExpr (substituteStorage cin) expr
+  in if nextExpr == expr then nextExpr else substituteSimplify cin nextExpr
 
 -- Put the given expression into memory starting at the given address and return the new
 -- context.
@@ -225,64 +237,45 @@ updateMemory :: SymExecutionContext -> Int -> Expr -> SymExecutionContext
 updateMemory cin address val =
   let bc = div (getExprSize val) byte_size_bit
       updateByte mem x =
-        assign mem (address + x, extractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
-      nmem = foldl updateByte (memory cin) [0..bc]
+        assign mem (address + x, simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
+      nmem = foldl updateByte (memory cin) [0..bc-1]
   in cin { memory = nmem }
 
--- A static expression is one whose value is not affected by a change in context. If the
--- input expression is a literal or a reference to some expression, then it is already
--- static. Otherwise return a reference to this expression.
+-- Symbolically executes the statement on the given context, potentially simplifying it in
+-- the process. Put the result of the simplification or a self-reference into storage.
+-- Returns resulting context.
 
-toStaticExpr :: Expr -> Int -> Expr
+symExec :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
 
-toStaticExpr exprVal id = case exprVal of
-  -- If it is a literal, put it in register as is
-  BvExpr v -> BvExpr v
-  -- If it is an expression reference, put it in register as is
-  ReferenceExpr s v -> ReferenceExpr s v
-  -- Otherwise put in a reference to this expression
-  a -> ReferenceExpr (getExprSize a) id
+symExec cin (SetReg id bs a) =
+  let exprVal = substituteSimplify cin a
+      regVal = case exprVal of
+        BvExpr v -> BvExpr v
+        _ -> GetReg bs
+  in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
 
--- Symbolically executes the labelled statement on the given context, potentially
--- simplifying it in the process. Put the result of the simplification or a reference to
--- it into storage. Returns resulting context.
-
-symExec :: SymExecutionContext -> LbldStmt -> (SymExecutionContext, LbldStmt)
-
-symExec cin (id, SetReg bs a) =
-  let exprVal = symEval cin a
-      regVal = toStaticExpr exprVal id
-  in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, (id, SetReg bs exprVal))
-
-symExec cin (id, Store dst val) =
-  let pdest = symEval cin dst
-      pval = symEval cin val
-      memVal = toStaticExpr pval id
+symExec cin (Store id dst val) =
+  let pdest = substituteSimplify cin dst
+      pval = substituteSimplify cin val
+      memVal = case pval of
+        BvExpr v -> BvExpr v
+        _ -> Load (div (getExprSize val) byte_size_bit) dst
   in
       case pdest of
-        BvExpr a -> (updateMemory cin (bvToInt a) memVal, (id, Store pdest pval))
+        BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)
         _ -> error "Store on symbolic mem not implemented"
 
--- Labels all the statements in the instructions with a unique identifier
+symExec cin (Compound id stmts) = (i, Compound id s)
+  where (i,s) = mapAccumL symExec cin stmts
 
-labelStmts :: [(Int, [Stmt])] -> [(Int, [LbldStmt])]
+-- Labels all the statements in the instructions with a new unique identifier
 
-labelStmts stmts = snd $ mapAccumL mapInstr 0 stmts
-  where mapInstr start (x,y) = let (acc, stmts) = mapStmts start y in (acc, (x, stmts))
-        mapStmts start stmts = mapAccumL (\x y -> (x+1, (x,y))) start stmts
+labelStmts :: Int -> Stmt a -> (Int, Stmt Int)
 
--- Symbolically executes the list of instructions in the given execution context and
--- returns the resulting context alongside the simplifications of the instructions.
+labelStmts start (SetReg id bs a) = (start + 1, SetReg start bs a)
 
-symSteps :: [(Int, [LbldStmt])] -> SymExecutionContext -> (SymExecutionContext, [(Int, [LbldStmt])])
+labelStmts start (Store id dst val) = (start + 1, Store start dst val)
 
-symSteps [] cin = (cin, [])
-
-symSteps stmts cin =
-  let x = snd (head stmts) in
-    let execStmts ec [] ns = (ec, (fst (head stmts), reverse ns))
-        execStmts ec (x:xs) ns = let (nec, s) = symExec ec x in execStmts nec xs (s:ns)
-        (nextEc, simpInstr) = execStmts cin x []
-        (finalEc, simpInstrs) = symSteps (tail stmts) nextEc
-    in (finalEc, simpInstr:simpInstrs)
+labelStmts start (Compound id stmts) = (i, Compound start s)
+  where (i,s) = mapAccumL labelStmts (start + 1) stmts
 

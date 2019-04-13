@@ -10,8 +10,9 @@ import Data.Word
 import BitVector
 
 --x86 vs arm, etc?
-mmp :: [CsMode] -> CsInsn -> (Int, [Stmt])
-mmp modes a = (convert (address a), (case toEnum (fromIntegral (insnId a)) of
+mmp :: [CsMode] -> CsInsn -> Stmt (Maybe Int)
+
+mmp modes a = Compound (Just $ convert (address a)) ((case toEnum (fromIntegral (insnId a)) of
   X86InsAdd -> add_s
   X86InsMov -> mov_s
   X86InsMovzx -> mov_s --will this trigger bits missaling?
@@ -28,15 +29,19 @@ mmp modes a = (convert (address a), (case toEnum (fromIntegral (insnId a)) of
   X86InsInc -> inc_s
   otherwise -> error ("Instruction " ++ mnemonic a ++ " not supported.")) modes a)
 
-liftAsm :: [CsMode] -> [CsInsn] -> [(Int, [Stmt])]
-liftAsm modes buf = map (mmp modes) buf
+liftAsm :: [CsMode] -> [CsInsn] -> Stmt (Maybe Int)
+
+liftAsm modes buf = Compound Nothing $ map (mmp modes) buf
 
 disasm_buf :: [CsMode] -> [Word8] -> IO (Either CsErr [CsInsn])
+
 disasm_buf modes buffer = disasmSimpleIO $ disasm modes buffer 0
 
-liftX86toAst :: [CsMode] -> [Word8] -> IO [(Int, [Stmt])]
+liftX86toAst :: [CsMode] -> [Word8] -> IO (Stmt (Maybe Int))
+
 liftX86toAst modes input = do
-    asm <- disasm_buf modes input
-    return (case asm of
-      Left _ -> error "Error in disassembling machine code."
-      Right b -> liftAsm modes b)
+  asm <- disasm_buf modes input
+  return (case asm of
+    Left _ -> error "Error in disassembling machine code."
+    Right b -> liftAsm modes b)
+    

@@ -6,6 +6,8 @@ import Hapstone.Internal.Capstone as Capstone
 import Ast
 import SymbolicEval
 import BitVector
+import Phasses
+import Data.Maybe
 
 import Lifter
 --import Simplify
@@ -22,7 +24,21 @@ main = do
   let lifted = case asm of
                   Left _ -> error "error on disasm"
                   Right b -> liftAsm modes b
-      oneblock = foldl (\y (a, b) -> y ++ b) [] lifted
+      oneblock = lifted
   -- print lifted
   -- print oneblock
-  print {-(getRegisterValues (reg_file (fst-} (symSteps (labelStmts lifted) (basicX86Context modes)){-)))-}
+  
+  -- Label the statements produced by lifting from assembly. The labels are necessary for
+  -- the cross referencing that happens in the next stage.
+  let labelled = snd $ labelStmts 0 lifted
+  -- Simplify the labelled statements by doing constant propagation and folding.
+  let simplified = snd $ symExec (basicX86Context modes) labelled
+  -- Elimate the dead code under the assumption that the flag bits are defined-before-use
+  -- in the fragment of code that follows simplified. Wrap it in a statement.
+  let eliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadCode [(1408,1472)] simplified
+  -- Now introduce cross references into the statements. This must be done after dead code
+  -- elimination as it obscures the locations where expressions are loaded from storage.
+  let referenced = snd $ insertRefs (basicX86Context modes) eliminated
+  -- Now print the result of the above transformations.
+  print referenced
+  --print {-(getRegisterValues (reg_file (fst-} (symExec (basicX86Context modes) (snd $ labelStmts 0 lifted)){-)))-}
