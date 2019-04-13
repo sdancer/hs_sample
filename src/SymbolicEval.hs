@@ -74,6 +74,9 @@ replaceExpr :: Int -> Expr -> Expr -> Expr
 
 -- The entire expression is being replaced
 replaceExpr l a b | getExprSize a == getExprSize b = b
+-- Join together two adjacent replacements
+replaceExpr l (ReplaceExpr m b (ExtractExpr n p q)) (ExtractExpr r t u) | l == m + (p-n) && p == r && q == u =
+  replaceExpr m b (ExtractExpr n t q)
 -- A part of a literal is being replaced by another literal
 replaceExpr l (BvExpr a) (BvExpr b) = BvExpr $ bvreplace a l b
 -- The current replacement coincides with a previous replacement
@@ -141,81 +144,99 @@ basicX86Context modes = SymExecutionContext {
 
 -- Simplifies the given expression in the given context
 
-symEval :: SymExecutionContext -> Expr -> Expr
+simplifyExpr :: Expr -> Expr
 
-symEval cin (BvxorExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvxorExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvxor abv bbv)
     (c, d) -> BvxorExpr c d
 
-symEval cin (BvandExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvandExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvand abv bbv)
     (c, d) -> BvandExpr c d
 
-symEval cin (BvorExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvorExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvor abv bbv)
     (c, d) -> BvorExpr c d
 
-symEval cin (BvnotExpr c) =
-  case (symEval cin c) of
+simplifyExpr (BvnotExpr c) =
+  case (simplifyExpr c) of
     (BvExpr abv) -> BvExpr (bvnot abv)
     (c) -> BvnotExpr c
 
-symEval cin (EqualExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (EqualExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (if equal abv bbv then one abv else zero abv)
     (c, d) -> EqualExpr c d
 
-symEval cin (BvaddExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvaddExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvadd abv bbv)
     (c, d) -> BvaddExpr c d
 
-symEval cin (BvsubExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvsubExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvsub abv bbv)
     (c, d) -> BvsubExpr c d
 
-symEval cin (BvlshrExpr c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (BvlshrExpr c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr abv, BvExpr bbv) -> BvExpr (bvlshr abv bbv)
     (c, d) -> BvlshrExpr c d
 
-symEval cin (ZxExpr a c) =
-  case (symEval cin c) of
+simplifyExpr (ZxExpr a c) =
+  case (simplifyExpr c) of
     (BvExpr bbv) -> BvExpr (zx a bbv)
     (c) -> ZxExpr a c
 
-symEval cin (IteExpr a b c) =
-  case (symEval cin a, symEval cin b, symEval cin c) of
+simplifyExpr (IteExpr a b c) =
+  case (simplifyExpr a, simplifyExpr b, simplifyExpr c) of
     (BvExpr a, b, c) -> if equal a (zero a) then c else b
     (a, b, c) -> IteExpr a b c
 
-symEval cin (ReplaceExpr b c d) =
-  case (symEval cin c, symEval cin d) of
+simplifyExpr (ReplaceExpr b c d) =
+  case (simplifyExpr c, simplifyExpr d) of
     (BvExpr cbv, BvExpr dbv) -> BvExpr (bvreplace cbv b dbv)
     (c, d) -> ReplaceExpr b c d
 
-symEval cin (ExtractExpr a b c) =
-  case (symEval cin c) of
+simplifyExpr (ExtractExpr a b c) =
+  case (simplifyExpr c) of
     (BvExpr d) -> BvExpr (bvextract a b d)
     (c) -> ExtractExpr a b c
 
-symEval cin (GetReg bs) = getRegisterValue (reg_file cin) bs
+simplifyExpr (Load a b) = Load a (simplifyExpr b)
+
+simplifyExpr expr = expr
+
+-- If the supplied expression is GetReg or Load, then substitute it for its value.
+-- Otherwise leave the expression unchanged.
+
+substituteStorage :: SymExecutionContext -> Expr -> Expr
+
+substituteStorage cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 
 -- add ro memory (raise exception if written)
 -- add symbolic addressed memory (example stack, no concrete values mapping references)
 
-symEval cin (Load a b) =
-  case (symEval cin b) of
-    (BvExpr memStartBv) ->
-      let memStart = bvToInt memStartBv
-      in getMemoryValue (memory cin) (memStart,memStart + a)
-    (b) -> Load a b
+substituteStorage cin (Load a b) = case b of
+  (BvExpr memStartBv) ->
+    let memStart = bvToInt memStartBv
+    in getMemoryValue (memory cin) (memStart,memStart + a)
+  (b) -> Load a b
 
-symEval cin expr = expr
+substituteStorage cin expr = expr
+
+-- Substitute in all known values and simplify. The simplifying may cause a memory address
+-- to change from some expression to a literal. Hence the simplification should be
+-- followed by another attempt to substitute and simplify, ...
+
+substituteSimplify :: SymExecutionContext -> Expr -> Expr
+
+substituteSimplify cin expr =
+  let nextExpr = simplifyExpr $ mapExpr (substituteStorage cin) expr
+  in if nextExpr == expr then nextExpr else {-substituteSimplify cin-} nextExpr
 
 -- Put the given expression into memory starting at the given address and return the new
 -- context.
@@ -226,7 +247,7 @@ updateMemory cin address val =
   let bc = div (getExprSize val) byte_size_bit
       updateByte mem x =
         assign mem (address + x, extractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
-      nmem = foldl updateByte (memory cin) [0..bc]
+      nmem = foldl updateByte (memory cin) [0..bc-1]
   in cin { memory = nmem }
 
 -- Symbolically executes the statement on the given context, potentially simplifying it in
@@ -236,18 +257,18 @@ updateMemory cin address val =
 symExec :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
 
 symExec cin (SetReg id bs a) =
-  let exprVal = symEval cin a
+  let exprVal = substituteSimplify cin a
       regVal = case exprVal of
         BvExpr v -> BvExpr v
         _ -> GetReg bs
   in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
 
 symExec cin (Store id dst val) =
-  let pdest = symEval cin dst
-      pval = symEval cin val
+  let pdest = substituteSimplify cin dst
+      pval = substituteSimplify cin val
       memVal = case pval of
         BvExpr v -> BvExpr v
-        _ -> Load (getExprSize val) dst
+        _ -> Load (div (getExprSize val) byte_size_bit) dst
   in
       case pdest of
         BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)

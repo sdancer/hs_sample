@@ -59,15 +59,6 @@ toStaticExpr exprVal id = case exprVal of
   -- Otherwise put in a reference to this expression
   a -> ReferenceExpr (getExprSize a) id
 
--- If the supplied expression is GetReg, then substitute it for its value. Otherwise leave
--- the expression unchanged.
-
-substituteReg :: SymExecutionContext -> Expr -> Expr
-
-substituteReg cin expr = case expr of
-  GetReg bs -> getRegisterValue (reg_file cin) bs
-  _ -> expr
-
 -- Symbolically executes the statement on the given context, potentially simplifying it in
 -- the process. Put the result of the simplification or a self-reference into storage.
 -- Returns resulting context.
@@ -75,13 +66,13 @@ substituteReg cin expr = case expr of
 insertRefs :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
 
 insertRefs cin (SetReg id bs a) =
-  let exprVal = mapExpr (substituteReg cin) a
+  let exprVal = mapExpr (substituteStorage cin) a
       regVal = toStaticExpr exprVal id
   in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
 
 insertRefs cin (Store id dst val) =
-  let pdest = mapExpr (substituteReg cin) dst
-      pval = mapExpr (substituteReg cin) val
+  let pdest = mapExpr (substituteStorage cin) dst
+      pval = mapExpr (substituteStorage cin) val
       memVal = toStaticExpr pval id
   in
       case pdest of
