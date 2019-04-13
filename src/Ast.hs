@@ -374,7 +374,8 @@ getExprSize (Load a b) = a * byte_size_bit
 
 getExprSize (GetReg a) = getRegisterSize a
 
--- Creates a post-ordered list of expressions from the given expression
+-- Creates a post-ordered list of expressions from the given expression. Sometimes the
+-- hierarchy is a hindrance in computations.
 
 flatten :: Expr -> [Expr]
 
@@ -435,4 +436,67 @@ flatten (UndefinedExpr a) = [UndefinedExpr a]
 flatten (Load a b) = flatten b ++ [Load a b]
 
 flatten (GetReg a) = [GetReg a]
+
+-- Going through the expression tree in post-order, map expressions to other expressions
+-- using the given function.
+
+mapExpr :: (Expr -> Expr) -> Expr -> Expr
+
+mapExpr f (BvExpr bv) = f (BvExpr bv)
+
+mapExpr f (BvaddExpr a b) = f $ BvaddExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvandExpr a b) = f $ BvandExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvashrExpr a b) = f $ BvashrExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvlshrExpr a b) = f $ BvlshrExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvnandExpr a b) = f $ BvnandExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvnegExpr a) = f $ BvnegExpr (mapExpr f a)
+
+mapExpr f (BvnorExpr a b) = f $ BvnorExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvnotExpr a) = f $ BvnotExpr (mapExpr f a)
+
+mapExpr f (BvorExpr a b) = f $ BvorExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvrolExpr a b) = f $ BvrolExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvrorExpr a b) = f $ BvrorExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvsubExpr a b) = f $ BvsubExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvxnorExpr a b) = f $ BvxnorExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (BvxorExpr a b) = f $ BvxorExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (ConcatExpr a) = f $ ConcatExpr (map (mapExpr f) a)
+
+mapExpr f (EqualExpr a b) = f $ EqualExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (ExtractExpr l h e) = f $ ExtractExpr l h (mapExpr f e)
+
+mapExpr f (ReplaceExpr l a b) = f $ ReplaceExpr l (mapExpr f a) (mapExpr f b)
+
+mapExpr f (IteExpr a b c) = f $ IteExpr (mapExpr f a) (mapExpr f b) (mapExpr f c)
+
+mapExpr f (LandExpr a b) = f $ LandExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (LnotExpr a) = f $ LnotExpr (mapExpr f a)
+
+mapExpr f (LorExpr a b) = f $ LorExpr (mapExpr f a) (mapExpr f b)
+
+mapExpr f (ReferenceExpr a b) = f $ ReferenceExpr a b
+
+mapExpr f (SxExpr a b) = f $ SxExpr a (mapExpr f b)
+
+mapExpr f (ZxExpr a b) = f $ ZxExpr a (mapExpr f b)
+
+mapExpr f (UndefinedExpr a) = f $ UndefinedExpr a
+
+mapExpr f (Load a b) = f $ Load a (mapExpr f b)
+
+mapExpr f (GetReg a) = f $ GetReg a
 

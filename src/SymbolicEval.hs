@@ -229,35 +229,25 @@ updateMemory cin address val =
       nmem = foldl updateByte (memory cin) [0..bc]
   in cin { memory = nmem }
 
--- A static expression is one whose value is not affected by a change in context. If the
--- input expression is a literal or a reference to some expression, then it is already
--- static. Otherwise return a reference to this expression.
-
-toStaticExpr :: Expr -> Int -> Expr
-
-toStaticExpr exprVal id = case exprVal of
-  -- If it is a literal, put it in register as is
-  BvExpr v -> BvExpr v
-  -- If it is an expression reference, put it in register as is
-  ReferenceExpr s v -> ReferenceExpr s v
-  -- Otherwise put in a reference to this expression
-  a -> ReferenceExpr (getExprSize a) id
-
--- Symbolically executes the labelled statement on the given context, potentially
--- simplifying it in the process. Put the result of the simplification or a reference to
--- it into storage. Returns resulting context.
+-- Symbolically executes the statement on the given context, potentially simplifying it in
+-- the process. Put the result of the simplification or a self-reference into storage.
+-- Returns resulting context.
 
 symExec :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
 
 symExec cin (SetReg id bs a) =
   let exprVal = symEval cin a
-      regVal = toStaticExpr exprVal id
+      regVal = case exprVal of
+        BvExpr v -> BvExpr v
+        _ -> GetReg bs
   in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
 
 symExec cin (Store id dst val) =
   let pdest = symEval cin dst
       pval = symEval cin val
-      memVal = toStaticExpr pval id
+      memVal = case pval of
+        BvExpr v -> BvExpr v
+        _ -> Load (getExprSize val) dst
   in
       case pdest of
         BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)
