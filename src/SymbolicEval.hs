@@ -41,22 +41,6 @@ isRegisterDefined :: SymRegisterFile -> CompoundReg -> Bool
 
 isRegisterDefined regFile reg = or (map (isSubregisterOf reg) (ranges regFile))
 
--- Extracts the expression in the given bit-range of the given expression
-
-extractExpr :: Int -> Int -> Expr -> Expr
-
--- The extraction is the entire expression
-extractExpr l h e | h - l == getExprSize e = e
--- The extraction is being done on a literal
-extractExpr l h (BvExpr a) = BvExpr $ bvextract l h a
--- The extraction is within the replacement expression
-extractExpr l h (ReplaceExpr a e f) | a <= l && h <= a + getExprSize f =
-  extractExpr y z f where y = l - a; z = h - a
--- The replacement expression is disjoint from the extraction
-extractExpr l h (ReplaceExpr a e f) | a + getExprSize f <= l || h <= a = extractExpr l h e
--- No simplification possible
-extractExpr l h e = ExtractExpr l h e
-
 -- Gets the value of the specified compound register from the register file
 
 getRegisterValue :: SymRegisterFile -> CompoundReg -> Expr
@@ -65,27 +49,8 @@ getRegisterValue regFile reg =
   let rootRegister = getRootRegister reg
       (l,h) = registerSub reg rootRegister
   in case lookup rootRegister regFile of
-    Just x -> extractExpr l h x
+    Just x -> simplifyExpr $ ExtractExpr l h x
     Nothing -> GetReg reg
-
--- Replace the expression in the given bit-range of the given expression
-
-replaceExpr :: Int -> Expr -> Expr -> Expr
-
--- The entire expression is being replaced
-replaceExpr l a b | getExprSize a == getExprSize b = b
--- Join together two adjacent replacements
-replaceExpr l (ReplaceExpr m b (ExtractExpr n p q)) (ExtractExpr r t u) | l == m + (p-n) && p == r && q == u =
-  replaceExpr m b (ExtractExpr n t q)
--- A part of a literal is being replaced by another literal
-replaceExpr l (BvExpr a) (BvExpr b) = BvExpr $ bvreplace a l b
--- The current replacement coincides with a previous replacement
-replaceExpr l (ReplaceExpr a b c) e | l == a && getExprSize e == getExprSize c = ReplaceExpr l b e
--- The current replacement is disjoint from previous replacement
-replaceExpr l (ReplaceExpr a b c) e | l + getExprSize e <= a || a + getExprSize c <= l =
-  ReplaceExpr a (replaceExpr l b e) c
--- The current replacement cannot be simplified
-replaceExpr l f e = ReplaceExpr l f e
 
 -- Updates the given register file by putting the given value in the given register
 
@@ -94,7 +59,7 @@ setRegisterValue :: SymRegisterFile -> CompoundReg -> Expr -> SymRegisterFile
 setRegisterValue regFile reg val =
   let rootRegister = getRootRegister reg
       (l,h) = registerSub reg rootRegister
-      newRootExpr = replaceExpr l (getRegisterValue regFile rootRegister) val
+      newRootExpr = simplifyExpr $ ReplaceExpr l (getRegisterValue regFile rootRegister) val
   in assign regFile (rootRegister, newRootExpr)
 
 -- Updates the register file by removing the value in the given register
@@ -117,11 +82,11 @@ getMemoryValue :: [(Int, Expr)] -> (Int, Int) -> Expr
 getMemoryValue mem (a,b) =
   let exprSize = (b-a) * byte_size_bit
       setByte expr offset =
-        replaceExpr (offset*byte_size_bit) expr $
+        ReplaceExpr (offset*byte_size_bit) expr $
           case lookup (a+offset) mem of
             Just x -> x
             _ -> Load 1 (BvExpr $ intToBv (a+offset))
-  in foldl setByte (UndefinedExpr exprSize) [0..b-a-1]
+  in simplifyExpr $ foldl setByte (UndefinedExpr exprSize) [0..b-a-1]
 
 -- Represents the state of a processor: register file contents, data memory contents, and
 -- the instruction memory.
@@ -196,10 +161,36 @@ simplifyExpr (IteExpr a b c) =
     (BvExpr a, b, c) -> if equal a (zero a) then c else b
     (a, b, c) -> IteExpr a b c
 
+-- The entire expression is being replaced
+simplifyExpr (ReplaceExpr l a b) | getExprSize a == getExprSize b = simplifyExpr b
+-- Join together two adjacent replacements
+simplifyExpr (ReplaceExpr l (ReplaceExpr m b (ExtractExpr n p q)) (ExtractExpr r t u))
+    | l == m + (p-n) && p == r && q == u =
+  simplifyExpr (ReplaceExpr m b (ExtractExpr n t q))
+-- A part of a literal is being replaced by another literal
+simplifyExpr (ReplaceExpr l (BvExpr a) (BvExpr b)) = BvExpr $ bvreplace a l b
+-- The current replacement coincides with a previous replacement
+simplifyExpr (ReplaceExpr l (ReplaceExpr a b c) e) | l == a && getExprSize e == getExprSize c =
+  simplifyExpr (ReplaceExpr l b e)
+-- The current replacement is disjoint from previous replacement
+simplifyExpr (ReplaceExpr l (ReplaceExpr a b c) e) | l + getExprSize e <= a || a + getExprSize c <= l =
+  ReplaceExpr a (simplifyExpr $ ReplaceExpr l b e) c
+
 simplifyExpr (ReplaceExpr b c d) =
   case (simplifyExpr c, simplifyExpr d) of
     (BvExpr cbv, BvExpr dbv) -> BvExpr (bvreplace cbv b dbv)
     (c, d) -> ReplaceExpr b c d
+
+-- The extraction is the entire expression
+simplifyExpr (ExtractExpr l h e) | h - l == getExprSize e = simplifyExpr e
+-- The extraction is being done on a literal
+simplifyExpr (ExtractExpr l h (BvExpr a)) = BvExpr $ bvextract l h a
+-- The extraction is within the replacement expression
+simplifyExpr (ExtractExpr l h (ReplaceExpr a e f)) | a <= l && h <= a + getExprSize f =
+  simplifyExpr (ExtractExpr y z f) where y = l - a; z = h - a
+-- The replacement expression is disjoint from the extraction
+simplifyExpr (ExtractExpr l h (ReplaceExpr a e f)) | a + getExprSize f <= l || h <= a =
+  simplifyExpr (ExtractExpr l h e)
 
 simplifyExpr (ExtractExpr a b c) =
   case (simplifyExpr c) of
@@ -246,7 +237,7 @@ updateMemory :: SymExecutionContext -> Int -> Expr -> SymExecutionContext
 updateMemory cin address val =
   let bc = div (getExprSize val) byte_size_bit
       updateByte mem x =
-        assign mem (address + x, extractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
+        assign mem (address + x, simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
       nmem = foldl updateByte (memory cin) [0..bc-1]
   in cin { memory = nmem }
 
