@@ -41,10 +41,7 @@ getOperandAst modes op =
 
 getZxRegister :: [CsMode] -> CompoundReg -> Expr
 
-getZxRegister modes reg =
-  ZxExpr (arch_bit_size - reg_size) (GetReg reg) where
-    arch_bit_size = get_arch_bit_size modes
-    reg_size = getRegisterSize reg
+getZxRegister modes reg = ZxExpr (get_arch_bit_size modes) (GetReg reg)
 
 -- Gets an expression for the memory location of the given memory operand
 
@@ -323,8 +320,8 @@ push_s modes inst =
         _ -> convert $ size src
   in [
       inc_insn_ptr modes inst,
-      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (bitVector (convert op_size) (arch_byte_size * 8)))),
-      Store Nothing (GetReg sp) (ZxExpr ((op_size - (convert $ size src)) * 8) (getOperandAst modes src))
+      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (bitVector (convert op_size) (arch_byte_size * byte_size_bit)))),
+      Store Nothing (GetReg sp) (ZxExpr (op_size * byte_size_bit) (getOperandAst modes src))
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
@@ -401,9 +398,8 @@ movzx_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
       src_ast = getOperandAst modes src_op
-      dst_size_bit = (convert $ size dst_op) * 8
-      src_size_bit = (convert $ size src_op) * 8
-      zx_node = ZxExpr (dst_size_bit - src_size_bit) src_ast
+      dst_size_bit = (convert $ size dst_op) * byte_size_bit
+      zx_node = ZxExpr dst_size_bit src_ast
   in
     [inc_insn_ptr modes inst,
     store_stmt modes dst_op zx_node]
@@ -436,8 +432,7 @@ lea_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
 lea_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
-      dst_size = fromIntegral (size dst_op * 8)
-      
+      dst_size = fromIntegral (size dst_op * byte_size_bit)
       src_ea_size = get_arch_bit_size modes
   in [
       inc_insn_ptr modes inst,
@@ -448,7 +443,7 @@ lea_s modes inst =
           let src_ea = getLeaAst modes mem
               src_ea_fitted =
                 if dst_size > src_ea_size then
-                  ZxExpr (dst_size - src_ea_size) src_ea
+                  ZxExpr dst_size src_ea
                 else if dst_size < src_ea_size then
                   ExtractExpr 0 dst_size src_ea
                 else src_ea

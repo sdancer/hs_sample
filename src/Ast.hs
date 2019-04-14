@@ -269,11 +269,11 @@ data Expr =
   -- identifier of the expression being referenced. Size of this expression equals the
   -- size of the expression being referenced.
   | ReferenceExpr Int Int
-  -- Sign extends the given expression by the given amount. Size of this expression equals
-  -- the sum of the given amount and the size of the given expression.
+  -- Sign extends the given expression to the given size. Size of this expression equals
+  -- the given amount.
   | SxExpr Int Expr
-  -- Zero extends the given expression by the given amount. Size of this expression equals
-  -- the sum of the given amount and the size of the given expression.
+  -- Zero extends the given expression to the given size. Size of this expression equals
+  -- the given amount.
   | ZxExpr Int Expr
   -- An undefined expression of the given size.
   | UndefinedExpr Int
@@ -371,7 +371,7 @@ getExprSize (ReferenceExpr a b) = a
 
 getExprSize (SxExpr a b) = a + getExprSize b
 
-getExprSize (ZxExpr a b) = a + getExprSize b
+getExprSize (ZxExpr a b) = a
 
 getExprSize (UndefinedExpr a) = a
 
