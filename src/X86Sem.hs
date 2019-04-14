@@ -234,7 +234,7 @@ cmp_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
 cmp_s modes inst =
   let (dst : src : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst
-      src_ast = SxExpr (convert ((size dst) - (size src)) * 8) (getOperandAst modes src)
+      src_ast = SxExpr (convert (size dst) * byte_size_bit) (getOperandAst modes src)
       cmp_node = BvsubExpr dst_ast src_ast
   in [
       inc_insn_ptr modes inst,

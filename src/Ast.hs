@@ -369,7 +369,7 @@ getExprSize (LorExpr a b) = getExprSize a
 
 getExprSize (ReferenceExpr a b) = a
 
-getExprSize (SxExpr a b) = a + getExprSize b
+getExprSize (SxExpr a b) = a
 
 getExprSize (ZxExpr a b) = a
 
