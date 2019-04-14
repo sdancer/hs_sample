@@ -277,9 +277,9 @@ data Expr =
   | ZxExpr Int Expr
   -- An undefined expression of the given size.
   | UndefinedExpr Int
-  -- Takes in order the number of bytes to extract from memory, and the address in memory
-  -- from which to obtain data. Size of this expression equals the number of bits to be
-  -- extracted from memory.
+  -- Takes in order the number of bits to extract from memory, and the byte address in
+  -- memory from which to obtain data. Size of this expression equals the number of bits
+  -- to be extracted from memory.
   | Load Int Expr
   -- Obtains the value of the given register. The size of this expression equals the size,
   -- in bits, of the register.
@@ -375,7 +375,7 @@ getExprSize (ZxExpr a b) = a + getExprSize b
 
 getExprSize (UndefinedExpr a) = a
 
-getExprSize (Load a b) = a * byte_size_bit
+getExprSize (Load a b) = a
 
 getExprSize (GetReg a) = getRegisterSize a
 

@@ -85,7 +85,7 @@ getMemoryValue mem (a,b) =
         ReplaceExpr (offset*byte_size_bit) expr $
           case lookup (a+offset) mem of
             Just x -> x
-            _ -> Load 1 (BvExpr $ intToBv (a+offset))
+            _ -> Load byte_size_bit (BvExpr $ intToBv (a+offset))
   in simplifyExpr $ foldl setByte (UndefinedExpr exprSize) [0..b-a-1]
 
 -- Represents the state of a processor: register file contents, data memory contents, and
@@ -168,11 +168,9 @@ substituteStorage cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 -- add ro memory (raise exception if written)
 -- add symbolic addressed memory (example stack, no concrete values mapping references)
 
-substituteStorage cin (Load a b) = case b of
-  (BvExpr memStartBv) ->
-    let memStart = bvToInt memStartBv
-    in getMemoryValue (memory cin) (memStart,memStart + a)
-  (b) -> Load a b
+substituteStorage cin (Load a (BvExpr memStartBv)) =
+  let memStart = bvToInt memStartBv
+  in getMemoryValue (memory cin) (memStart, memStart + (div a byte_size_bit))
 
 substituteStorage cin expr = expr
 
@@ -216,7 +214,7 @@ symExec cin (Store id dst val) =
       pval = substituteSimplify cin val
       memVal = case pval of
         BvExpr v -> BvExpr v
-        _ -> Load (div (getExprSize val) byte_size_bit) pdest
+        _ -> Load (getExprSize val) pdest
   in
       case pdest of
         BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)

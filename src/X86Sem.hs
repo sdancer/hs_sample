@@ -30,10 +30,12 @@ inc_insn_ptr modes insn = SetReg Nothing (get_insn_ptr modes) (next_instr_ptr mo
 
 getOperandAst :: [CsMode] -> CsX86Op -> Expr
 
-getOperandAst modes op = case value op of
-  (Imm value) -> BvExpr (bitVector (convert value) (convert (size op) * 8))
-  (Reg reg) -> GetReg (fromX86Reg reg)
-  (Mem mem) -> Load (convert $ size op) (getLeaAst modes mem)
+getOperandAst modes op =
+  let opBitSize = convert (size op) * byte_size_bit
+  in case value op of
+    (Imm value) -> BvExpr (bitVector (convert value) opBitSize)
+    (Reg reg) -> GetReg (fromX86Reg reg)
+    (Mem mem) -> Load opBitSize (getLeaAst modes mem)
 
 -- Gets the specified register after it has been zero extended to the architecture size
 
@@ -354,7 +356,7 @@ pop_s modes inst =
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
-    ++ [store_stmt modes dst (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
+    ++ [store_stmt modes dst (Load (op_size * byte_size_bit) (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
     ++ (includeIf (not (sp_base || sp_reg)) [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
@@ -365,7 +367,7 @@ mov_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
       src_ast = getOperandAst modes src_op
-      dst_size_bit = (convert $ size dst_op) * 8
+      dst_size_bit = (convert $ size dst_op) * byte_size_bit
       -- Segment registers are defined as 32 or 64 bit vectors in order to
       -- avoid having to simulate the GDT. This definition allows users to
       -- directly define their segments offset.

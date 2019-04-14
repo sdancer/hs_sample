@@ -137,7 +137,7 @@ eval cin (GetReg bs) =
 
 eval cin (Load a b) =
   let memStart = bvToInt (eval cin b)
-      memVal = getMemoryValue (memory cin) [memStart..(memStart + a - 1)]
+      memVal = getMemoryValue (memory cin) [memStart..(memStart + (div a byte_size_bit) - 1)]
   in case memVal of
     Nothing -> error "Read attempted on uninitialized memory."
     Just x -> x
