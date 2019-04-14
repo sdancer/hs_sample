@@ -400,6 +400,20 @@ mov_s modes inst =
         SetReg Nothing (fromX86Flag X86FlagCf) (UndefinedExpr 1),
         SetReg Nothing (fromX86Flag X86FlagOf) (UndefinedExpr 1)]
 
+-- Make list of operations in the IR that has the same semantics as the X86 movzx instruction
+
+movzx_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
+
+movzx_s modes inst =
+  let (dst_op : src_op : _ ) = x86operands inst
+      dst_ast = getOperandAst modes dst_op
+      src_ast = getOperandAst modes src_op
+      dst_size_bit = (convert $ size dst_op) * 8
+      src_size_bit = (convert $ size src_op) * 8
+      zx_node = ZxExpr (dst_size_bit - src_size_bit) src_ast
+  in
+    [inc_insn_ptr modes inst,
+    store_stmt modes dst_op zx_node]
 
 -- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
 

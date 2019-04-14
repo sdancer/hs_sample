@@ -130,7 +130,6 @@ simplifyExprAux (BvlshrExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvlshr abv bbv)
 simplifyExprAux (ZxExpr a (BvExpr bbv)) = BvExpr (zx a bbv)
 
 simplifyExprAux (IteExpr (BvExpr a) b c) = if equal a (zero a) then c else b
-
 -- The entire expression is being replaced
 simplifyExprAux (ReplaceExpr l a b) | getExprSize a == getExprSize b = b
 -- Join together two adjacent replacements
@@ -142,7 +141,6 @@ simplifyExprAux (ReplaceExpr l (BvExpr a) (BvExpr b)) = BvExpr $ bvreplace a l b
 -- The current replacement coincides with a previous replacement
 simplifyExprAux (ReplaceExpr l (ReplaceExpr a b c) e) | l == a && getExprSize e == getExprSize c =
   ReplaceExpr l b e
-
 -- The extraction is the entire expression
 simplifyExprAux (ExtractExpr l h e) | h - l == getExprSize e = e
 -- The extraction is being done on a literal
