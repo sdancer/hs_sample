@@ -66,13 +66,13 @@ toStaticExpr exprVal id = case exprVal of
 insertRefs :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
 
 insertRefs cin (SetReg id bs a) =
-  let exprVal = mapExpr (substituteStorage cin) a
+  let exprVal = mapExpr (substituteSimplify cin) a
       regVal = toStaticExpr exprVal id
   in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
 
 insertRefs cin (Store id dst val) =
-  let pdest = mapExpr (substituteStorage cin) dst
-      pval = mapExpr (substituteStorage cin) val
+  let pdest = mapExpr (substituteSimplify cin) dst
+      pval = mapExpr (substituteSimplify cin) val
       memVal = toStaticExpr pval id
   in
       case pdest of
