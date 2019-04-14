@@ -220,7 +220,9 @@ symExec cin (Store id dst val) =
   in
       case pdest of
         BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)
-        _ -> error "Store on symbolic mem not implemented"
+        _ -> (cin, Comment "Store on symbolic memory not implemented. Ignoring statement.")
+
+symExec cin (Comment str) = (cin, Comment str)
 
 symExec cin (Compound id stmts) = (i, Compound id s)
   where (i,s) = mapAccumL symExec cin stmts
@@ -232,6 +234,8 @@ labelStmts :: Int -> Stmt a -> (Int, Stmt Int)
 labelStmts start (SetReg id bs a) = (start + 1, SetReg start bs a)
 
 labelStmts start (Store id dst val) = (start + 1, Store start dst val)
+-- Comments cannot be referenced, hence they do not need labels
+labelStmts start (Comment str) = (start, Comment str)
 
 labelStmts start (Compound id stmts) = (i, Compound start s)
   where (i,s) = mapAccumL labelStmts (start + 1) stmts

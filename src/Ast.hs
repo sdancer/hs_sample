@@ -309,6 +309,11 @@ data Stmt a =
   -- Takes in order the id of the statement, and an ordered list of statements that will
   -- be executed when this statement is executed.
   | Compound a [Stmt a]
+  -- An inert statement where the String argument is the actual comment. Some conditions
+  -- that may cause the generation of this constructor are invalid object code and
+  -- usage of unsupported instructions. Comment statements are used to ensure the
+  -- successful code analysis even in the presence of hostile program inputs.
+  | Comment String
   deriving (Eq, Show)
 
 -- The size of an expression can be determined statically directly from it and its

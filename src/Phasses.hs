@@ -77,7 +77,9 @@ insertRefs cin (Store id dst val) =
   in
       case pdest of
         BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)
-        _ -> error "Store on symbolic mem not implemented"
+        _ -> (cin, Comment "Store on symbolic memory not implemented. Ignoring statement.")
+
+insertRefs cin (Comment str) = (cin, Comment str)
 
 insertRefs cin (Compound id stmts) = (i, Compound id s)
   where (i,s) = mapAccumL insertRefs cin stmts

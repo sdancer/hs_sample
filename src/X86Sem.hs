@@ -35,15 +35,6 @@ getOperandAst modes op = case value op of
   (Reg reg) -> GetReg (fromX86Reg reg)
   (Mem mem) -> Load (convert $ size op) (getLeaAst modes mem)
 
--- Gets the memory structure for the given operand.
-
-getMem :: CsX86OpValue -> X86OpMemStruct
-
-getMem op_val = case op_val of
-  (Imm value) -> error "Memory operand expected but immediate value found instead."
-  (Reg reg) -> error "Memory operand expected but register value found instead."
-  (Mem mem) -> mem
-
 -- Gets the specified register after it has been zero extended to the architecture size
 
 getZxRegister :: [CsMode] -> CompoundReg -> Expr
@@ -76,7 +67,7 @@ store_stmt modes operand store_what =
   case (value operand) of
     (Reg reg) -> SetReg Nothing (fromX86Reg reg) store_what
     (Mem mem) -> Store Nothing (getLeaAst modes mem) store_what
-    _ -> error "Target of store operation is neither a register nor a memory operand."
+    _ -> Comment ("Target of store operation is neither a register nor a memory operand.")
 
 -- Make operation to set the zero flag to the value that it would have after some operation
 
@@ -444,20 +435,26 @@ lea_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
       dst_size = fromIntegral (size dst_op * 8)
-      src_ea = getLeaAst modes (getMem (value src_op))
+      
       src_ea_size = get_arch_bit_size modes
-      src_ea_fitted =
-        if dst_size > src_ea_size then
-          ZxExpr (dst_size - src_ea_size) src_ea
-        else if dst_size < src_ea_size then
-          ExtractExpr 0 dst_size src_ea
-        else src_ea
   in [
       inc_insn_ptr modes inst,
-      store_stmt modes dst_op src_ea_fitted
+      case value src_op of
+        Imm value -> Comment ("Memory operand expected in " ++ show inst ++ ", but immediate value found instead. Ignoring opcode.")
+        Reg reg -> Comment ("Memory operand expected in " ++ show inst ++ ", but register value found instead. Ignoring opcode.")
+        Mem mem ->
+          let src_ea = getLeaAst modes mem
+              src_ea_fitted =
+                if dst_size > src_ea_size then
+                  ZxExpr (dst_size - src_ea_size) src_ea
+                else if dst_size < src_ea_size then
+                  ExtractExpr 0 dst_size src_ea
+                else src_ea
+          in store_stmt modes dst_op src_ea_fitted
     ]
 
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86
+
 getCsX86arch inst =
   let arch = maybe Nothing archInfo inst
   in case arch of
@@ -465,7 +462,9 @@ getCsX86arch inst =
     _ -> Nothing
 
 x86operands :: CsInsn -> [CsX86Op]
+
 x86operands inst =
   let arch2 = getCsX86arch (Capstone.detail inst)
       ops = maybe [] operands arch2
   in ops
+
