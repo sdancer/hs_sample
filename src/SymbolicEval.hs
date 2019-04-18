@@ -77,23 +77,24 @@ getRegisterValues regFile =
 
 -- Gets the specified bytes from memory
 
-getMemoryValue :: [(Int, Expr)] -> (Int, Int) -> Expr
+getMemoryValue :: [(Expr, Expr)] -> Expr -> Int -> Expr
 
-getMemoryValue mem (a,b) =
-  let exprSize = (b-a) * byte_size_bit
+getMemoryValue mem a exprSize =
+  let byteCount = div exprSize byte_size_bit
       setByte expr offset =
-        ReplaceExpr (offset*byte_size_bit) expr $
-          case lookup (a+offset) mem of
+        let currentAddress = BvaddExpr a (BvExpr $ intToBv offset (getExprSize a))
+        in ReplaceExpr (offset*byte_size_bit) expr $
+          case lookup currentAddress mem of
             Just x -> x
-            _ -> Load byte_size_bit (BvExpr $ intToBv (a+offset))
-  in simplifyExpr $ foldl setByte (UndefinedExpr exprSize) [0..b-a-1]
+            _ -> Load byte_size_bit currentAddress
+  in simplifyExpr $ foldl setByte (UndefinedExpr exprSize) [0..byteCount-1]
 
 -- Represents the state of a processor: register file contents, data memory contents, and
 -- the instruction memory.
 
 data SymExecutionContext = SymExecutionContext {
   reg_file :: SymRegisterFile, -- Holds the contents and validity of the processor registers
-  memory :: [(Int, Expr)], -- Holds the contents and validity of the processor memory
+  memory :: [(Expr, Expr)], -- Holds the contents and validity of the processor memory
   proc_modes :: [CsMode] -- Holds the processor information that effects interpretation of instructions
 } deriving (Eq, Show)
 
@@ -128,6 +129,8 @@ simplifyExprAux (BvsubExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsub abv bbv)
 simplifyExprAux (BvlshrExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvlshr abv bbv)
 
 simplifyExprAux (ZxExpr a (BvExpr bbv)) = BvExpr (zx a bbv)
+
+simplifyExprAux (ZxExpr a e) | a == getExprSize e = e
 
 simplifyExprAux (IteExpr (BvExpr a) b c) = if equal a (zero a) then c else b
 -- The entire expression is being replaced
@@ -166,11 +169,8 @@ substituteStorage :: SymExecutionContext -> Expr -> Expr
 substituteStorage cin (GetReg bs) = getRegisterValue (reg_file cin) bs
 
 -- add ro memory (raise exception if written)
--- add symbolic addressed memory (example stack, no concrete values mapping references)
 
-substituteStorage cin (Load a (BvExpr memStartBv)) =
-  let memStart = bvToInt memStartBv
-  in getMemoryValue (memory cin) (memStart, memStart + (div a byte_size_bit))
+substituteStorage cin (Load a memStart) = getMemoryValue (memory cin) memStart a
 
 substituteStorage cin expr = expr
 
@@ -187,14 +187,37 @@ substituteSimplify cin expr =
 -- Put the given expression into memory starting at the given address and return the new
 -- context.
 
-updateMemory :: SymExecutionContext -> Int -> Expr -> SymExecutionContext
+updateMemory :: SymExecutionContext -> Expr -> Expr -> SymExecutionContext
 
 updateMemory cin address val =
   let bc = div (getExprSize val) byte_size_bit
       updateByte mem x =
-        assign mem (address + x, simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
+        assign mem (BvaddExpr address (BvExpr $ intToBv x (getExprSize address)),
+          simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
       nmem = foldl updateByte (memory cin) [0..bc-1]
   in cin { memory = nmem }
+
+-- Backdates the given expression over the given statement. That is, makes an expression
+-- that evaluates to the same value in the environment that prevails just before the
+-- given statement is executed.
+
+{-backdate :: [Stmt a] -> Expr -> Expr
+
+backdate [SetReg _ r1 a : _] expr =
+  let substitute (GetReg r2) = simplifyExpr $ ReplaceExpr l1 (GetReg r2) a
+        where (l1,_) = registerSub r1 r2
+      substitute x = x
+  in mapExpr substitute expr
+
+backdate (Store _ dst val) expr =
+  let substitute (Load bc pdst) | exprEquals pdst dst == Just True = val
+      substitute (Load bc pdst) | exprEquals pdst dst == Just False = val
+      substitute x = x
+  in mapExpr substitute expr
+
+backdate [Comment _ : _] expr = expr
+
+backdate [Compound _ stmts : _] expr = foldr backdate expr stmts-}
 
 -- Symbolically executes the statement on the given context, potentially simplifying it in
 -- the process. Put the result of the simplification or a self-reference into storage.
@@ -215,10 +238,7 @@ symExec cin (Store id dst val) =
       memVal = case pval of
         BvExpr v -> BvExpr v
         _ -> Load (getExprSize val) pdest
-  in
-      case pdest of
-        BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)
-        _ -> (cin, Comment "Store on symbolic memory not implemented. Ignoring statement.")
+  in (updateMemory cin pdest memVal, Store id pdest pval)
 
 symExec cin (Comment str) = (cin, Comment str)
 

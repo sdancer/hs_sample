@@ -8,6 +8,7 @@ import SymbolicEval
 import BitVector
 import Phasses
 import Data.Maybe
+import Data.SBV
 
 import Lifter
 --import Simplify
