@@ -29,12 +29,6 @@ ranges :: SymRegisterFile -> [CompoundReg]
 
 ranges = fst . unzip
 
--- An empty register file for convenience
-
-emptyRegisterFile :: SymRegisterFile
-
-emptyRegisterFile = []
-
 -- Determines if the given register has a definite value in the register file
 
 isRegisterDefined :: SymRegisterFile -> CompoundReg -> Bool
@@ -93,9 +87,16 @@ getMemoryValue mem a exprSize =
 -- the instruction memory.
 
 data SymExecutionContext = SymExecutionContext {
-  reg_file :: SymRegisterFile, -- Holds the contents and validity of the processor registers
-  memory :: [(Expr, Expr)], -- Holds the contents and validity of the processor memory
-  proc_modes :: [CsMode] -- Holds the processor information that effects interpretation of instructions
+  -- Holds the contents of the processor registers expressed in terms of initial register and memory values
+  absoluteRegisterFile :: SymRegisterFile,
+  -- Holds the contents of the processor registers expressed in terms of current register and memory values
+  relativeRegisterFile :: SymRegisterFile,
+  -- Holds the contents of processor memory expressed in terms of initial register and memory values
+  absoluteMemory :: [(Expr, Expr)],
+  -- Holds the contents of processor memory expressed in terms of current register and memory values
+  relativeMemory :: [(Expr, Expr)],
+  -- Holds the processor information that effects interpretation of instructions
+  procModes :: [CsMode]
 } deriving (Eq, Show)
 
 -- Creates a context where the memory and the register file are empty.
@@ -103,9 +104,11 @@ data SymExecutionContext = SymExecutionContext {
 basicX86Context :: [CsMode] -> SymExecutionContext
 
 basicX86Context modes = SymExecutionContext {
-  memory = [],
-  reg_file = emptyRegisterFile,
-  proc_modes = modes
+  absoluteMemory = [],
+  relativeMemory = [],
+  absoluteRegisterFile = [],
+  relativeRegisterFile = [],
+  procModes = modes
 }
 
 -- Simplifies root of the given expression
@@ -159,65 +162,58 @@ simplifyExprAux expr = expr
 
 -- Simplifies the entire given expression
 
-simplifyExpr = mapExpr simplifyExprAux
+simplifyExpr :: Expr -> Expr
+
+simplifyExpr expr =
+  let newExpr = mapExpr simplifyExprAux expr
+  in if newExpr == expr then expr else simplifyExpr newExpr
 
 -- If the supplied expression is GetReg or Load, then substitute it for its value.
 -- Otherwise leave the expression unchanged.
 
-substituteStorage :: SymExecutionContext -> Expr -> Expr
+substituteAbsAux :: SymExecutionContext -> Expr -> Expr
 
-substituteStorage cin (GetReg bs) = getRegisterValue (reg_file cin) bs
+substituteAbsAux cin (GetReg bs) = getRegisterValue (absoluteRegisterFile cin) bs
 
--- add ro memory (raise exception if written)
+substituteAbsAux cin (Load a memStart) = getMemoryValue (absoluteMemory cin) memStart a
 
-substituteStorage cin (Load a memStart) = getMemoryValue (memory cin) memStart a
+substituteAbsAux cin expr = expr
 
-substituteStorage cin expr = expr
+substituteAbs :: SymExecutionContext -> Expr -> Expr
 
--- Substitute in all known values and simplify. The simplifying may cause a memory address
--- to change from some expression to a literal. Hence the simplification should be
--- followed by another attempt to substitute and simplify, ...
+substituteAbs cin expr = mapExpr (substituteAbsAux cin) expr
 
-substituteSimplify :: SymExecutionContext -> Expr -> Expr
+substituteRelAux :: SymExecutionContext -> Expr -> Expr
 
-substituteSimplify cin expr =
-  let nextExpr = simplifyExpr $ mapExpr (substituteStorage cin) expr
-  in if nextExpr == expr then nextExpr else substituteSimplify cin nextExpr
+substituteRelAux cin (GetReg bs) =
+  case getRegisterValue (relativeRegisterFile cin) bs of
+    BvExpr v -> BvExpr v
+    ReferenceExpr a b -> ReferenceExpr a b
+    _ -> GetReg bs
+
+substituteRelAux cin (Load a memStart) =
+  case getMemoryValue (relativeMemory cin) memStart a of
+    BvExpr v -> BvExpr v
+    ReferenceExpr a b -> ReferenceExpr a b
+    _ -> Load a memStart
+
+substituteRelAux cin expr = expr
+
+substituteRel :: SymExecutionContext -> Expr -> Expr
+
+substituteRel cin expr = mapExpr (substituteRelAux cin) expr
 
 -- Put the given expression into memory starting at the given address and return the new
 -- context.
 
-updateMemory :: SymExecutionContext -> Expr -> Expr -> SymExecutionContext
+updateMemory :: [(Expr, Expr)] -> Expr -> Expr -> [(Expr, Expr)]
 
-updateMemory cin address val =
-  let bc = div (getExprSize val) byte_size_bit
+updateMemory memory address value =
+  let bc = div (getExprSize value) byte_size_bit
       updateByte mem x =
         assign mem (BvaddExpr address (BvExpr $ intToBv x (getExprSize address)),
-          simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) val)
-      nmem = foldl updateByte (memory cin) [0..bc-1]
-  in cin { memory = nmem }
-
--- Backdates the given expression over the given statement. That is, makes an expression
--- that evaluates to the same value in the environment that prevails just before the
--- given statement is executed.
-
-{-backdate :: [Stmt a] -> Expr -> Expr
-
-backdate [SetReg _ r1 a : _] expr =
-  let substitute (GetReg r2) = simplifyExpr $ ReplaceExpr l1 (GetReg r2) a
-        where (l1,_) = registerSub r1 r2
-      substitute x = x
-  in mapExpr substitute expr
-
-backdate (Store _ dst val) expr =
-  let substitute (Load bc pdst) | exprEquals pdst dst == Just True = val
-      substitute (Load bc pdst) | exprEquals pdst dst == Just False = val
-      substitute x = x
-  in mapExpr substitute expr
-
-backdate [Comment _ : _] expr = expr
-
-backdate [Compound _ stmts : _] expr = foldr backdate expr stmts-}
+          simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) value)
+  in foldl updateByte memory [0..bc-1]
 
 -- Symbolically executes the statement on the given context, potentially simplifying it in
 -- the process. Put the result of the simplification or a self-reference into storage.
@@ -226,19 +222,21 @@ backdate [Compound _ stmts : _] expr = foldr backdate expr stmts-}
 symExec :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
 
 symExec cin (SetReg id bs a) =
-  let exprVal = substituteSimplify cin a
-      regVal = case exprVal of
-        BvExpr v -> BvExpr v
-        _ -> GetReg bs
-  in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
+  let relExpr = simplifyExpr $ substituteRel cin a
+      absExpr = simplifyExpr $ substituteAbs cin a
+  in (cin { absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absExpr,
+            relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs relExpr },
+        SetReg id bs relExpr)
+
+-- add ro memory (raise exception if written)
 
 symExec cin (Store id dst val) =
-  let pdest = substituteSimplify cin dst
-      pval = substituteSimplify cin val
-      memVal = case pval of
-        BvExpr v -> BvExpr v
-        _ -> Load (getExprSize val) pdest
-  in (updateMemory cin pdest memVal, Store id pdest pval)
+  let pdest = simplifyExpr $ substituteAbs cin dst
+      pvalAbs = simplifyExpr $ substituteAbs cin val
+      pvalRel = simplifyExpr $ substituteRel cin val
+  in (cin { absoluteMemory = updateMemory (absoluteMemory cin) pdest pvalAbs,
+            relativeMemory = updateMemory (relativeMemory cin) pdest pvalRel },
+        Store id pdest pvalRel)
 
 symExec cin (Comment str) = (cin, Comment str)
 

@@ -66,15 +66,19 @@ toStaticExpr exprVal id = case exprVal of
 insertRefs :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
 
 insertRefs cin (SetReg id bs a) =
-  let exprVal = substituteSimplify cin a
-      regVal = toStaticExpr exprVal id
-  in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
+  let absVal = simplifyExpr $ substituteAbs cin a
+      relVal = simplifyExpr $ substituteRel cin a
+  in (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id),
+            absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absVal },
+        SetReg id bs relVal)
 
 insertRefs cin (Store id dst val) =
-  let pdest = substituteSimplify cin dst
-      pval = substituteSimplify cin val
-      memVal = toStaticExpr pval id
-  in (updateMemory cin pdest memVal, Store id pdest pval)
+  let pdest = simplifyExpr $ substituteAbs cin dst
+      pvalAbs = simplifyExpr $ substituteAbs cin val
+      pvalRel = simplifyExpr $ substituteRel cin val
+  in (cin { relativeMemory = updateMemory (relativeMemory cin) pdest (toStaticExpr pvalRel id),
+            absoluteMemory = updateMemory (absoluteMemory cin) pdest pvalAbs },
+        Store id pdest pvalRel)
 
 insertRefs cin (Comment str) = (cin, Comment str)
 
