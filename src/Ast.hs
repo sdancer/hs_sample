@@ -227,9 +227,7 @@ data Expr =
   | BvashrExpr Expr Expr -- Arithmetic shift right
   | BvlshrExpr Expr Expr -- Logical shift right
   | BvmulExpr Expr Expr -- Multiply
-  | BvnandExpr Expr Expr -- Bitwise nand
   | BvnegExpr Expr -- Negate
-  | BvnorExpr Expr Expr -- Bitwise nor
   | BvnotExpr Expr -- Bitwise not
   | BvorExpr Expr Expr -- Bitwise or
   | BvrolExpr Expr Expr -- Rotate left
@@ -249,13 +247,9 @@ data Expr =
   | BvuleExpr Expr Expr -- Unsigned less than or equal
   | BvultExpr Expr Expr -- Unsigned less than
   | BvuremExpr Expr Expr -- Unsigned remainder
-  | BvxnorExpr Expr Expr -- Bitwise xnor
   | BvxorExpr Expr Expr -- Bitwise xor
   | EqualExpr Expr Expr -- Returns 1 is equal, 0 otherwise
   | IteExpr Expr Expr Expr -- If first expression is non-zero then return second, otherwise third
-  | LandExpr Expr Expr -- Logical and
-  | LnotExpr Expr -- Logical not
-  | LorExpr Expr Expr -- Logical or
   
   -- Takes in order the low bit index (inclusive), the high bit index (exclusive), and the
   -- expression from which to extract. Size of resulting expression is the difference
@@ -329,11 +323,7 @@ getExprSize (BvashrExpr a b) = getExprSize a
 
 getExprSize (BvlshrExpr a b) = getExprSize a
 
-getExprSize (BvnandExpr a b) = getExprSize a
-
 getExprSize (BvnegExpr a) = getExprSize a
-
-getExprSize (BvnorExpr a b) = getExprSize a
 
 getExprSize (BvnotExpr a) = getExprSize a
 
@@ -344,8 +334,6 @@ getExprSize (BvrolExpr a b) = getExprSize a
 getExprSize (BvrorExpr a b) = getExprSize a
 
 getExprSize (BvsubExpr a b) = getExprSize a
-
-getExprSize (BvxnorExpr a b) = getExprSize a
 
 getExprSize (BvxorExpr a b) = getExprSize a
 
@@ -360,12 +348,6 @@ getExprSize (ExtractExpr l h e) = h - l
 getExprSize (ReplaceExpr l a b) = getExprSize a
 
 getExprSize (IteExpr a b c) = getExprSize b
-
-getExprSize (LandExpr a b) = getExprSize a
-
-getExprSize (LnotExpr a) = getExprSize a
-
-getExprSize (LorExpr a b) = getExprSize a
 
 getExprSize (ReferenceExpr a b) = a
 
@@ -394,11 +376,7 @@ flatten (BvashrExpr a b) = flatten a ++ flatten b ++ [BvashrExpr a b]
 
 flatten (BvlshrExpr a b) = flatten a ++ flatten b ++ [BvlshrExpr a b]
 
-flatten (BvnandExpr a b) = flatten a ++ flatten b ++ [BvnandExpr a b]
-
 flatten (BvnegExpr a) = flatten a ++ [BvnegExpr a]
-
-flatten (BvnorExpr a b) = flatten a ++ flatten b ++ [BvnorExpr a b]
 
 flatten (BvnotExpr a) = flatten a ++ [BvnotExpr a]
 
@@ -409,8 +387,6 @@ flatten (BvrolExpr a b) = flatten a ++ flatten b ++ [BvrolExpr a b]
 flatten (BvrorExpr a b) = flatten a ++ flatten b ++ [BvrorExpr a b]
 
 flatten (BvsubExpr a b) = flatten a ++ flatten b ++ [BvsubExpr a b]
-
-flatten (BvxnorExpr a b) = flatten a ++ flatten b ++ [BvxnorExpr a b]
 
 flatten (BvxorExpr a b) = flatten a ++ flatten b ++ [BvxorExpr a b]
 
@@ -423,12 +399,6 @@ flatten (ExtractExpr l h e) = flatten e ++ [ExtractExpr l h e]
 flatten (ReplaceExpr l a b) = flatten a ++ flatten b ++ [ReplaceExpr l a b]
 
 flatten (IteExpr a b c) = flatten a ++ flatten b ++ flatten c ++ [IteExpr a b c]
-
-flatten (LandExpr a b) = flatten a ++ flatten b ++ [LandExpr a b]
-
-flatten (LnotExpr a) = flatten a ++ [LnotExpr a]
-
-flatten (LorExpr a b) = flatten a ++ flatten b ++ [LorExpr a b]
 
 flatten (ReferenceExpr a b) = [ReferenceExpr a b]
 
@@ -457,11 +427,7 @@ mapExpr f (BvashrExpr a b) = f $ BvashrExpr (mapExpr f a) (mapExpr f b)
 
 mapExpr f (BvlshrExpr a b) = f $ BvlshrExpr (mapExpr f a) (mapExpr f b)
 
-mapExpr f (BvnandExpr a b) = f $ BvnandExpr (mapExpr f a) (mapExpr f b)
-
 mapExpr f (BvnegExpr a) = f $ BvnegExpr (mapExpr f a)
-
-mapExpr f (BvnorExpr a b) = f $ BvnorExpr (mapExpr f a) (mapExpr f b)
 
 mapExpr f (BvnotExpr a) = f $ BvnotExpr (mapExpr f a)
 
@@ -472,8 +438,6 @@ mapExpr f (BvrolExpr a b) = f $ BvrolExpr (mapExpr f a) (mapExpr f b)
 mapExpr f (BvrorExpr a b) = f $ BvrorExpr (mapExpr f a) (mapExpr f b)
 
 mapExpr f (BvsubExpr a b) = f $ BvsubExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvxnorExpr a b) = f $ BvxnorExpr (mapExpr f a) (mapExpr f b)
 
 mapExpr f (BvxorExpr a b) = f $ BvxorExpr (mapExpr f a) (mapExpr f b)
 
@@ -486,12 +450,6 @@ mapExpr f (ExtractExpr l h e) = f $ ExtractExpr l h (mapExpr f e)
 mapExpr f (ReplaceExpr l a b) = f $ ReplaceExpr l (mapExpr f a) (mapExpr f b)
 
 mapExpr f (IteExpr a b c) = f $ IteExpr (mapExpr f a) (mapExpr f b) (mapExpr f c)
-
-mapExpr f (LandExpr a b) = f $ LandExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (LnotExpr a) = f $ LnotExpr (mapExpr f a)
-
-mapExpr f (LorExpr a b) = f $ LorExpr (mapExpr f a) (mapExpr f b)
 
 mapExpr f (ReferenceExpr a b) = f $ ReferenceExpr a b
 
