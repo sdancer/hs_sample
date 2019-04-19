@@ -8,7 +8,6 @@ import Data.List
 import Data.Maybe
 import Hapstone.Internal.Capstone as Capstone
 import BitVector
-import Data.SBV.Dynamic
 
 -- Assigns the given value to the given key. Adds a new association to the list if necessary
 
@@ -203,101 +202,6 @@ substituteRelAux cin expr = expr
 substituteRel :: SymExecutionContext -> Expr -> Expr
 
 substituteRel cin expr = mapExpr (substituteRelAux cin) expr
-
-exprToSVal :: Expr -> SVal
-
-exprToSVal (BvExpr a) = svInteger (KBounded False (bvlength a)) (toInteger (bvToInt a))
-
-exprToSVal (BvaddExpr a b) = svPlus (exprToSVal a) (exprToSVal b)
-
-exprToSVal (BvandExpr a b) = svAnd (exprToSVal a) (exprToSVal b)
-
-exprToSVal (BvashrExpr a b) = svShiftRight (svSign (exprToSVal a)) (exprToSVal b)
-
-exprToSVal (BvlshrExpr a b) = svShiftRight (svUnsign (exprToSVal a)) (exprToSVal b)
-
-exprToSVal (BvmulExpr a b) = svTimes (exprToSVal a) (exprToSVal b)
-
-exprToSVal (BvnegExpr a) = svUNeg (exprToSVal a)
-
-exprToSVal (BvnotExpr a) = svNot (exprToSVal a)
-
-exprToSVal (BvorExpr a b) = svOr (exprToSVal a) (exprToSVal b)
-
-exprToSVal (BvrolExpr a b) = svRotateLeft (exprToSVal a) (exprToSVal b)
-
-exprToSVal (BvrorExpr a b) = svRotateRight (exprToSVal a) (exprToSVal b)
-
-exprToSVal (BvsdivExpr a b) = svQuot (svSign $ exprToSVal a) (svSign $ exprToSVal b)
-
-exprToSVal (BvsgeExpr a b) = svGreaterEq (svSign $ exprToSVal a) (svSign $ exprToSVal b)
-
-exprToSVal (BvsgtExpr a b) = svGreaterThan (svSign $ exprToSVal a) (svSign $ exprToSVal b)
-
-exprToSVal (BvshlExpr a b) = svShiftLeft (exprToSVal a) (exprToSVal b)
-
-exprToSVal (BvsleExpr a b) = svLessEq (svSign $ exprToSVal a) (svSign $ exprToSVal b)
-
-exprToSVal (BvsltExpr a b) = svLessThan (svSign $ exprToSVal a) (svSign $ exprToSVal b)
-
-exprToSVal (BvsremExpr a b) = svRem (svSign $ exprToSVal a) (svSign $ exprToSVal b)
-
-exprToSVal (BvsubExpr a b) = svMinus (exprToSVal a) (exprToSVal b)
-
-exprToSVal (BvudivExpr a b) = svQuot (svUnsign $ exprToSVal a) (svUnsign $ exprToSVal b)
-
-exprToSVal (BvugeExpr a b) = svGreaterEq (svUnsign $ exprToSVal a) (svUnsign $ exprToSVal b)
-
-exprToSVal (BvugtExpr a b) = svGreaterThan (svUnsign $ exprToSVal a) (svUnsign $ exprToSVal b)
-
-exprToSVal (BvuleExpr a b) = svLessEq (svUnsign $ exprToSVal a) (svUnsign $ exprToSVal b)
-
-exprToSVal (BvultExpr a b) = svLessThan (svUnsign $ exprToSVal a) (svUnsign $ exprToSVal b)
-
-exprToSVal (BvuremExpr a b) = svRem (svUnsign $ exprToSVal a) (svUnsign $ exprToSVal b)
-
-exprToSVal (BvxorExpr a b) = svXOr (exprToSVal a) (exprToSVal b)
-
-exprToSVal (EqualExpr a b) = svEqual (exprToSVal a) (exprToSVal b)
-
-exprToSVal (IteExpr a b c) = svIte (exprToSVal a) (exprToSVal b) (exprToSVal c)
-
-exprToSVal (ExtractExpr a b c) = svExtract (b-1) a (exprToSVal c)
-
-{-  
-  -- Takes in order the low bit index (inclusive), the expression whose part starting at
-  -- the aforementioned bit is to be replaced, and the expression that is to be used as
-  -- the replacement. Size of returned expression equals that of first supplied expression.
-  | ReplaceExpr Int Expr Expr
-  -- Takes in order the size of the expression that is being referenced, and the
-  -- identifier of the expression being referenced. Size of this expression equals the
-  -- size of the expression being referenced.
-  | ReferenceExpr Int Int
-  -- Sign extends the given expression to the given size. Size of this expression equals
-  -- the given amount.
-  | SxExpr Int Expr
-  -- Zero extends the given expression to the given size. Size of this expression equals
-  -- the given amount.
-  | ZxExpr Int Expr
-  -- An undefined expression of the given size.
-  | UndefinedExpr Int
-  -- Takes in order the number of bits to extract from memory, and the byte address in
-  -- memory from which to obtain data. Size of this expression equals the number of bits
-  -- to be extracted from memory.
-  | Load Int Expr
-  -- Obtains the value of the given register. The size of this expression equals the size,
-  -- in bits, of the register.
-  | GetReg CompoundReg
-  
-  | ConcatExpr [Expr]
-  | DecimalExpr Int --float?
-  | DeclareExpr --wtf?
-  | DistinctExpr Expr Expr
-  | IffExpr Expr Expr -- ! `(iff <expr1> <expr2>)`
-  | LetExpr String Expr Expr
-  | StringExpr String
-  | VariableExpr
-  deriving (Eq, Show)-}
 
 -- Put the given expression into memory starting at the given address and return the new
 -- context.

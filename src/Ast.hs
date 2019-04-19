@@ -7,6 +7,11 @@ import Hapstone.Internal.Capstone as Capstone
 import Data.Bits
 import Util
 import BitVector
+import Data.SBV
+import Data.SBV.Dynamic
+import Data.Maybe
+import Control.Monad.State.Lazy
+import Data.Coerce
 
 byte_size_bit :: Num a => a
 byte_size_bit = 8
@@ -462,4 +467,100 @@ mapExpr f (UndefinedExpr a) = f $ UndefinedExpr a
 mapExpr f (Load a b) = f $ Load a (mapExpr f b)
 
 mapExpr f (GetReg a) = f $ GetReg a
+
+-- Converts an Expr to an m SVal where MonadSymbolic m. This is to enable SMT solvers to
+-- prove various things about the expressions synthesized from program binaries.
+
+newtype AssocMonadSymbolic m = AssocMonadSymbolic (StateT [(Expr, AssocMonadSymbolic m)] m SVal)
+
+exprToSVal :: MonadSymbolic m => Expr -> StateT [(Expr, AssocMonadSymbolic m)] m SVal
+
+exprToSVal (BvExpr a) = return $ svInteger (KBounded False (bvlength a)) (toInteger (bvToInt a))
+
+exprToSVal (BvaddExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svPlus sva svb; }
+
+exprToSVal (BvandExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svAnd sva svb; }
+
+exprToSVal (BvashrExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svShiftRight (svSign sva) svb; }
+
+exprToSVal (BvlshrExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svShiftRight (svUnsign sva) svb; }
+
+exprToSVal (BvmulExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svTimes sva svb; }
+
+exprToSVal (BvnegExpr a) = do { sva <- exprToSVal a; return $ svUNeg sva; }
+
+exprToSVal (BvnotExpr a) = do { sva <- exprToSVal a; return $ svNot sva; }
+
+exprToSVal (BvorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svOr sva svb; }
+
+exprToSVal (BvrolExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRotateLeft sva svb; }
+
+exprToSVal (BvrorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRotateRight sva svb; }
+
+exprToSVal (BvsdivExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svQuot (svSign sva) (svSign svb); }
+
+exprToSVal (BvsgeExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterEq (svSign sva) (svSign svb); }
+
+exprToSVal (BvsgtExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterThan (svSign sva) (svSign svb); }
+
+exprToSVal (BvshlExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svShiftLeft sva svb; }
+
+exprToSVal (BvsleExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessEq (svSign sva) (svSign svb); }
+
+exprToSVal (BvsltExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessThan (svSign sva) (svSign svb); }
+
+exprToSVal (BvsremExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRem (svSign sva) (svSign svb); }
+
+exprToSVal (BvsubExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svMinus sva svb; }
+
+exprToSVal (BvudivExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svQuot (svUnsign sva) (svUnsign svb); }
+
+exprToSVal (BvugeExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterEq (svUnsign sva) (svUnsign svb); }
+
+exprToSVal (BvugtExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterThan (svUnsign sva) (svUnsign svb); }
+
+exprToSVal (BvuleExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessEq (svUnsign sva) (svUnsign svb); }
+
+exprToSVal (BvultExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessThan (svUnsign sva) (svUnsign svb); }
+
+exprToSVal (BvuremExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRem (svUnsign sva) (svUnsign svb); }
+
+exprToSVal (BvxorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svXOr sva svb; }
+
+exprToSVal (EqualExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svEqual sva svb; }
+
+exprToSVal (IteExpr a b c) = do { sva <- exprToSVal a; svb <- exprToSVal b; svc <- exprToSVal c; return $ svIte sva svb svc; }
+
+exprToSVal (ExtractExpr a b c) = do { svc <- exprToSVal c; return $ svExtract (b-1) a svc; }
+
+exprToSVal (ReplaceExpr a b c) = do { svc <- exprToSVal c; svb <- exprToSVal b;
+  return $ svJoin (svExtract (getExprSize b - 1) (a + getExprSize c) svb) (svJoin svc (svExtract (a - 1) 0 svb)); }
+-- No SBV function found for sign extension. Hack: concatenate zero vector to the right of
+-- the given expression, and then arithmetic shift right.
+exprToSVal (SxExpr a b) = do { svb <- exprToSVal b; svt <- exprToSVal (BvExpr $ wordToBv 0 a);
+  return $ svShr (svSign $ svJoin svb svt) a; }
+
+exprToSVal (ZxExpr a b) = do { svt <- exprToSVal (BvExpr $ wordToBv 0 a); svb <- exprToSVal b; return $ svJoin svt svb; }
+-- The following lookups are done in order to ensure that references to the same things
+-- get the same symbols
+exprToSVal (ReferenceExpr a b) = do
+  exprValAssocs <- get;
+  case lookup (ReferenceExpr a b) exprValAssocs of
+    Nothing -> do
+      let newVar = sWordN_ a
+      put ((ReferenceExpr a b, coerce newVar) : exprValAssocs)
+      newVar
+    Just val -> coerce val;
+
+{-exprToSVal (Load a b) = fromJust $ lookup (Load a b) p
+
+exprToSVal (GetReg a) =
+  let rootRegister = getRootRegister a
+      (l,h) = registerSub a rootRegister
+  in do { svr <- fromJust $ lookup (GetReg rootRegister) p; return $ svExtract (h-1) l svr; }-}
+
+{-  
+  -- An undefined expression of the given size.
+  | UndefinedExpr Int
+  deriving (Eq, Show)-}
 
