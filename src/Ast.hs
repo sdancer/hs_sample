@@ -12,6 +12,7 @@ import Data.SBV.Dynamic
 import Data.Maybe
 import Control.Monad.State.Lazy
 import Data.Coerce
+import Debug.Trace
 
 byte_size_bit :: Num a => a
 byte_size_bit = 8
@@ -471,9 +472,7 @@ mapExpr f (GetReg a) = f $ GetReg a
 -- Converts an Expr to an m SVal where MonadSymbolic m. This is to enable SMT solvers to
 -- prove various things about the expressions synthesized from program binaries.
 
-newtype AssocMonadSymbolic m = AssocMonadSymbolic (StateT [(Expr, AssocMonadSymbolic m)] m SVal)
-
-exprToSVal :: MonadSymbolic m => Expr -> StateT [(Expr, AssocMonadSymbolic m)] m SVal
+exprToSVal :: MonadSymbolic m => Expr -> StateT [(Expr, SVal)] m SVal
 
 exprToSVal (BvExpr a) = return $ svInteger (KBounded False (bvlength a)) (toInteger (bvToInt a))
 
@@ -543,24 +542,71 @@ exprToSVal (SxExpr a b) = do { svb <- exprToSVal b; svt <- exprToSVal (BvExpr $ 
 exprToSVal (ZxExpr a b) = do { svt <- exprToSVal (BvExpr $ wordToBv 0 a); svb <- exprToSVal b; return $ svJoin svt svb; }
 -- The following lookups are done in order to ensure that references to the same things
 -- get the same symbols
+
+-- Turn a ReferenceExpr into an SVal by looking up the corresponding SVal in the current
+-- state. If it is not there, create a new symbol and add it to the state.
+
 exprToSVal (ReferenceExpr a b) = do
-  exprValAssocs <- get;
+  exprValAssocs <- get
   case lookup (ReferenceExpr a b) exprValAssocs of
     Nothing -> do
-      let newVar = sWordN_ a
-      put ((ReferenceExpr a b, coerce newVar) : exprValAssocs)
-      newVar
-    Just val -> coerce val;
+      newVar <- sWordN_ a
+      put ((ReferenceExpr a b, newVar) : exprValAssocs)
+      exprToSVal (ReferenceExpr a b)
+    Just val -> return $ val
 
-{-exprToSVal (Load a b) = fromJust $ lookup (Load a b) p
+-- Turn a Load expression into an SVal by separately converting each of its bytes into
+-- symbols and joining these symbols together. Add the new associations between
+-- expressions and symbols to the state.
 
-exprToSVal (GetReg a) =
+exprToSVal (Load 0 _) = exprToSVal (BvExpr (intToBv 0 0))
+
+exprToSVal (Load a b) = do
+  exprValAssocs <- get
+  let (exprs, svals) = unzip exprValAssocs
+  results <- mapM (exprEquals (Load byte_size_bit b)) exprs
+  if elem Nothing results then
+    fail "Could not determine the equality of two expressions,"
+  else if not $ elem (Just True) results then do
+    newVar <- sWordN_ byte_size_bit
+    put ((Load byte_size_bit b, newVar) : exprValAssocs)
+    exprToSVal (Load a b)
+  else do
+    let boolValAssocs = zip results svals
+        val = fromJust $ lookup (Just True) boolValAssocs
+    rest <- exprToSVal (Load (a - byte_size_bit) (BvaddExpr b (BvExpr (intToBv 1 (getExprSize b)))))
+    return $ svJoin val rest
+
+-- Turn a GetReg into an SVal by looking up the corresponding SVal in the current
+-- state. If it is not there, create a new symbol and add it to the state.
+
+exprToSVal (GetReg a) = do
+  exprValAssocs <- get
   let rootRegister = getRootRegister a
-      (l,h) = registerSub a rootRegister
-  in do { svr <- fromJust $ lookup (GetReg rootRegister) p; return $ svExtract (h-1) l svr; }-}
+  case lookup (GetReg rootRegister) exprValAssocs of
+    Nothing -> do
+      newVar <- sWordN_ $ getRegisterSize rootRegister
+      put ((GetReg rootRegister, newVar) : exprValAssocs)
+      exprToSVal (GetReg a)
+    Just val -> do
+      let (l,h) = registerSub a rootRegister
+      return $ svExtract (h-1) l val
 
-{-  
-  -- An undefined expression of the given size.
-  | UndefinedExpr Int
-  deriving (Eq, Show)-}
+-- Checks if two expressions are equal using an SMT solver. There may be no result, in
+-- which case Nothing is returned after I/O. The expressions may be equal, in which case
+-- Just True is returned after I/O. Otherwise Just False is returned after I/O.
+
+exprEquals :: MonadIO m => Expr -> Expr -> m (Maybe Bool)
+
+exprEquals a b = liftIO $ do
+  thmRes <- Data.SBV.Dynamic.proveWith z3{verbose=True} $ evalStateT (do
+    sva <- exprToSVal a
+    svb <- exprToSVal b
+    return $ svEqual sva svb) []
+  return $ case coerce thmRes of
+    Unsatisfiable _ _ -> Just False
+    Satisfiable _ _ -> Just True
+    _ -> Nothing
+
+{- UndefinedExpr Int -}
 

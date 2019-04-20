@@ -353,7 +353,9 @@ pop_s modes inst =
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
-    ++ [store_stmt modes dst (Load (op_size * byte_size_bit) (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
+    ++ [store_stmt modes dst
+        (Load (op_size * byte_size_bit)
+          (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
     ++ (includeIf (not (sp_base || sp_reg)) [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
