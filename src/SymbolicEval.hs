@@ -162,9 +162,13 @@ simplifyExprAux (BvorExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvor abv bbv)
 
 simplifyExprAux (BvnotExpr (BvExpr abv)) = BvExpr (bvnot abv)
 
-simplifyExprAux (EqualExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (if equal abv bbv then one abv else zero abv)
+simplifyExprAux (EqualExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (if bvequal abv bbv then bvone abv else bvzero abv)
 
 simplifyExprAux (BvaddExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvadd abv bbv)
+
+simplifyExprAux (BvaddExpr a (BvExpr b)) | bvequal b (bvzero b) = a
+
+simplifyExprAux (BvaddExpr (BvExpr b) a) | bvequal b (bvzero b) = a
 
 simplifyExprAux (BvsubExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsub abv bbv)
 
@@ -174,13 +178,15 @@ simplifyExprAux (ZxExpr a (BvExpr bbv)) = BvExpr (zx a bbv)
 
 simplifyExprAux (ZxExpr a e) | a == getExprSize e = e
 
-simplifyExprAux (IteExpr (BvExpr a) b c) = if equal a (zero a) then c else b
+simplifyExprAux (IteExpr (BvExpr a) b c) = if bvequal a (bvzero a) then c else b
 -- The entire expression is being replaced
 simplifyExprAux (ReplaceExpr l a b) | getExprSize a == getExprSize b = b
 -- Join together two adjacent replacements
 simplifyExprAux (ReplaceExpr l (ReplaceExpr m b (ExtractExpr n p q)) (ExtractExpr r t u))
     | l == m + (p-n) && p == r && q == u =
   ReplaceExpr m b (ExtractExpr n t q)
+simplifyExprAux (ReplaceExpr l (ReplaceExpr m b (BvExpr n)) (BvExpr r)) | l == m + (bvlength n) =
+  ReplaceExpr m b (BvExpr (bvconcat r n))
 -- A part of a literal is being replaced by another literal
 simplifyExprAux (ReplaceExpr l (BvExpr a) (BvExpr b)) = BvExpr $ bvreplace a l b
 -- The current replacement coincides with a previous replacement
@@ -196,6 +202,8 @@ simplifyExprAux (ExtractExpr l h (ReplaceExpr a e f)) | a <= l && h <= a + getEx
 -- The replacement expression is disjoint from the extraction
 simplifyExprAux (ExtractExpr l h (ReplaceExpr a e f)) | a + getExprSize f <= l || h <= a =
   ExtractExpr l h e
+
+simplifyExprAux (Load a b) = Load a (simplifyExpr b)
 
 simplifyExprAux expr = expr
 
@@ -214,7 +222,9 @@ substituteAbsAux :: MonadIO m => SymExecutionContext -> Expr -> m Expr
 
 substituteAbsAux cin (GetReg bs) = return $ getRegisterValue (absoluteRegisterFile cin) bs
 
-substituteAbsAux cin (Load a memStart) = getMemoryValue (absoluteMemory cin) memStart a
+substituteAbsAux cin (Load a memStart) = do
+  memStartSubs <- substituteAbs cin memStart
+  getMemoryValue (absoluteMemory cin) (simplifyExpr memStartSubs) a
 
 substituteAbsAux cin expr = return expr
 
@@ -231,7 +241,8 @@ substituteRelAux cin (GetReg bs) =
     _ -> GetReg bs
 
 substituteRelAux cin (Load a memStart) = do
-  mv <- getMemoryValue (relativeMemory cin) memStart a
+  memStartSubs <- substituteAbs cin memStart
+  mv <- getMemoryValue (relativeMemory cin) (simplifyExpr memStartSubs) a
   return $ case simplifyExpr mv of
     BvExpr v -> BvExpr v
     ReferenceExpr a b -> ReferenceExpr a b

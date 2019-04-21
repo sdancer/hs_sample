@@ -113,7 +113,7 @@ eval cin (BvnotExpr a) = bvnot (eval cin a)
 eval cin (EqualExpr a b) =
   let abv = eval cin a
       bbv = eval cin b
-  in if equal abv bbv then one abv else zero abv
+  in if bvequal abv bbv then bvone abv else bvzero abv
 
 eval cin (BvaddExpr a b) = bvadd (eval cin a) (eval cin b)
 
@@ -124,7 +124,7 @@ eval cin (BvlshrExpr a b) = bvlshr (eval cin a) (eval cin b)
 eval cin (ZxExpr a b) = zx a (eval cin b)
 
 eval cin (IteExpr a b c) =
-  let abv = eval cin a in if equal abv (zero abv) then eval cin c else eval cin b
+  let abv = eval cin a in if bvequal abv (bvzero abv) then eval cin c else eval cin b
 
 eval cin (ReplaceExpr b c d) = bvreplace (eval cin c) b (eval cin d)
 

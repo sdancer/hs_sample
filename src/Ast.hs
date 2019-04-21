@@ -414,8 +414,9 @@ flatten (SxExpr a b) = flatten b ++ [SxExpr a b]
 flatten (ZxExpr a b) = flatten b ++ [ZxExpr a b]
 
 flatten (UndefinedExpr a) = [UndefinedExpr a]
-
-flatten (Load a b) = flatten b ++ [Load a b]
+-- Does not recur into b. This is in order to be consistent with mapMExpr and exprToSVal
+-- which also do not recur into b.
+flatten (Load a b) = [Load a b]
 
 flatten (GetReg a) = [GetReg a]
 
@@ -465,8 +466,9 @@ mapMExpr f (SxExpr a b) = do { mb <- mapMExpr f b; f $ SxExpr a mb; }
 mapMExpr f (ZxExpr a b) = do { mb <- mapMExpr f b; f $ ZxExpr a mb; }
 
 mapMExpr f (UndefinedExpr a) = f $ UndefinedExpr a
-
-mapMExpr f (Load a b) = do { mb <- mapMExpr f b; f $ Load a mb; }
+-- Must not recur into b as this will interfere with the symbolic evaluator's addressing
+-- logic.
+mapMExpr f (Load a b) = f $ Load a b
 
 mapMExpr f (GetReg a) = f $ GetReg a
 
@@ -540,14 +542,24 @@ exprToSVal (IteExpr a b c) = do { sva <- exprToSVal a; svb <- exprToSVal b; svc 
 
 exprToSVal (ExtractExpr a b c) = do { svc <- exprToSVal c; return $ svExtract (b-1) a svc; }
 
-exprToSVal (ReplaceExpr a b c) = do { svc <- exprToSVal c; svb <- exprToSVal b;
-  return $ svJoin (svExtract (getExprSize b - 1) (a + getExprSize c) svb) (svJoin svc (svExtract (a - 1) 0 svb)); }
+exprToSVal (ReplaceExpr a b c) = do
+  svc <- exprToSVal c
+  svb <- exprToSVal b
+  return $ svJoin (svExtract (getExprSize b - 1) (a + getExprSize c) svb) (svJoin svc (svExtract (a - 1) 0 svb))
+-- The semantics for extension expressions is that the given expression is coerced to the
+-- given length. If the given length is less than the size of the given expression, then
+-- truncation happens.
+exprToSVal (ZxExpr a b) = do
+  svt <- exprToSVal (BvExpr $ wordToBv 0 a)
+  svb <- exprToSVal b
+  return $ svExtract (a-1) 0 (svJoin svt svb)
 -- No SBV function found for sign extension. Hack: concatenate zero vector to the right of
 -- the given expression, and then arithmetic shift right.
-exprToSVal (SxExpr a b) = do { svb <- exprToSVal b; svt <- exprToSVal (BvExpr $ wordToBv 0 a);
-  return $ svShr (svSign $ svJoin svb svt) a; }
+exprToSVal (SxExpr a b) = do
+  svb <- exprToSVal b
+  svt <- exprToSVal (BvExpr $ wordToBv 0 a)
+  return $ svExtract (a - 1) 0 (svShr (svSign $ svJoin svb svt) a)
 
-exprToSVal (ZxExpr a b) = do { svt <- exprToSVal (BvExpr $ wordToBv 0 a); svb <- exprToSVal b; return $ svJoin svt svb; }
 -- The following lookups are done in order to ensure that references to the same things
 -- get the same symbols
 
@@ -558,8 +570,9 @@ exprToSVal (ReferenceExpr a b) = do
   exprValAssocs <- get
   case lookup (ReferenceExpr a b) exprValAssocs of
     Nothing -> do
-      newVar <- sWordN_ a
-      put ((ReferenceExpr a b, newVar) : exprValAssocs)
+      let newExpr = ReferenceExpr a b
+      newVar <- sWordN a (show newExpr)
+      put ((newExpr, newVar) : exprValAssocs)
       exprToSVal (ReferenceExpr a b)
     Just val -> return $ val
 
@@ -576,8 +589,9 @@ exprToSVal (Load a b) = do
   if elem Nothing results then
     fail "Could not determine the equality of two expressions."
   else if not $ elem (Just True) results then do
-    newVar <- sWordN_ byte_size_bit
-    put ((Load byte_size_bit b, newVar) : exprValAssocs)
+    let newExpr = Load byte_size_bit b
+    newVar <- sWordN byte_size_bit (show newExpr)
+    put ((newExpr, newVar) : exprValAssocs)
     exprToSVal (Load a b)
   else do
     let boolValAssocs = zip results svals
@@ -593,8 +607,9 @@ exprToSVal (GetReg a) = do
   let rootRegister = getRootRegister a
   case lookup (GetReg rootRegister) exprValAssocs of
     Nothing -> do
-      newVar <- sWordN_ $ getRegisterSize rootRegister
-      put ((GetReg rootRegister, newVar) : exprValAssocs)
+      let newExpr = GetReg rootRegister
+      newVar <- sWordN (getRegisterSize rootRegister) (show newExpr)
+      put ((newExpr, newVar) : exprValAssocs)
       exprToSVal (GetReg a)
     Just val -> do
       let (l,h) = registerSub a rootRegister

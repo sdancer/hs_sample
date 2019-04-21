@@ -43,13 +43,13 @@ intToBv :: Int -> Int -> BitVector
 
 intToBv a b = sx b (Vector.singleton (BitVector.convert a), finiteBitSize (0 :: Word))
 
-zero :: BitVector -> BitVector
+bvzero :: BitVector -> BitVector
 
-zero a = wordToBv 0 (bvlength a)
+bvzero a = wordToBv 0 (bvlength a)
 
-one :: BitVector -> BitVector
+bvone :: BitVector -> BitVector
 
-one a = wordToBv 1 (bvlength a)
+bvone a = wordToBv 1 (bvlength a)
 
 bvxor :: BitVector -> BitVector -> BitVector
 
@@ -116,11 +116,11 @@ sx a (bv,bn) =
 
 -- Compares two bit-vectors by zero-extending both and element-wise checking word equality
 
-equal :: BitVector -> BitVector -> Bool
+bvequal :: BitVector -> BitVector -> Bool
 
-equal (_,an) (_,bn) | an /= bn = error "Bit-vector arguments to EqualExpr have different bit-lengths."
+bvequal (_,an) (_,bn) | an /= bn = error "Bit-vector arguments to EqualExpr have different bit-lengths."
 
-equal a b =
+bvequal a b =
   let ext = Vector.length (fst a) * digitBitSize
       (av,_) = zx ext a
       (bv,_) = zx ext b
@@ -149,7 +149,7 @@ bvadd _ _ = error "Bit-vector arguments to BvaddExpr have different bit-lengths.
 
 bvnegate :: BitVector -> BitVector
 
-bvnegate a = bvadd (bvnot a) (one a)
+bvnegate a = bvadd (bvnot a) (bvone a)
 
 bvsub :: BitVector -> BitVector -> BitVector
 
@@ -157,7 +157,7 @@ bvsub a b = bvadd a (bvnegate b)
 
 ite :: BitVector -> BitVector -> BitVector -> BitVector
 
-ite a (bv,bn) (cv,cn) | bn == cn = (if equal a (zero a) then cv else bv, bn)
+ite a (bv,bn) (cv,cn) | bn == cn = (if bvequal a (bvzero a) then cv else bv, bn)
 
 ite _ _ _ = error "Bit-vector arguments to IteExpr have different bit-lengths."
 

@@ -16,12 +16,14 @@ updateDefinedRegisters :: [CompoundReg] -> Stmt a -> [CompoundReg]
 updateDefinedRegisters regs (SetReg _ reg expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
+        Load a b -> removeAccessedReg rs b
         _ -> rs
   in foldl removeAccessedReg (addRegister regs reg) (flatten expr)
 
 updateDefinedRegisters regs (Store _ _ expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
+        Load a b -> removeAccessedReg rs b
         _ -> rs
   in foldl removeAccessedReg regs (flatten expr)
 
