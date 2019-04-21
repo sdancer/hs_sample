@@ -269,17 +269,17 @@ data Expr =
   -- identifier of the expression being referenced. Size of this expression equals the
   -- size of the expression being referenced.
   | ReferenceExpr Int Int
-  -- Sign extends the given expression by the given amount. Size of this expression equals
-  -- the sum of the given amount and the size of the given expression.
+  -- Sign extends the given expression to the given size. Size of this expression equals
+  -- the given amount.
   | SxExpr Int Expr
-  -- Zero extends the given expression by the given amount. Size of this expression equals
-  -- the sum of the given amount and the size of the given expression.
+  -- Zero extends the given expression to the given size. Size of this expression equals
+  -- the given amount.
   | ZxExpr Int Expr
   -- An undefined expression of the given size.
   | UndefinedExpr Int
-  -- Takes in order the number of bytes to extract from memory, and the address in memory
-  -- from which to obtain data. Size of this expression equals the number of bits to be
-  -- extracted from memory.
+  -- Takes in order the number of bits to extract from memory, and the byte address in
+  -- memory from which to obtain data. Size of this expression equals the number of bits
+  -- to be extracted from memory.
   | Load Int Expr
   -- Obtains the value of the given register. The size of this expression equals the size,
   -- in bits, of the register.
@@ -309,6 +309,11 @@ data Stmt a =
   -- Takes in order the id of the statement, and an ordered list of statements that will
   -- be executed when this statement is executed.
   | Compound a [Stmt a]
+  -- An inert statement where the String argument is the actual comment. Some conditions
+  -- that may cause the generation of this constructor are invalid object code and
+  -- usage of unsupported instructions. Comment statements are used to ensure the
+  -- successful code analysis even in the presence of hostile program inputs.
+  | Comment String
   deriving (Eq, Show)
 
 -- The size of an expression can be determined statically directly from it and its
@@ -364,13 +369,13 @@ getExprSize (LorExpr a b) = getExprSize a
 
 getExprSize (ReferenceExpr a b) = a
 
-getExprSize (SxExpr a b) = a + getExprSize b
+getExprSize (SxExpr a b) = a
 
-getExprSize (ZxExpr a b) = a + getExprSize b
+getExprSize (ZxExpr a b) = a
 
 getExprSize (UndefinedExpr a) = a
 
-getExprSize (Load a b) = a * byte_size_bit
+getExprSize (Load a b) = a
 
 getExprSize (GetReg a) = getRegisterSize a
 

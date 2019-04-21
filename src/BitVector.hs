@@ -77,22 +77,22 @@ bvnot :: BitVector -> BitVector
 
 bvnot (av,an) = (Vector.map complement av, an)
 
--- Zero extends the given bit-vector by the given amount
+-- Zero extends the given bit-vector to the given amount
 
 zx :: Int -> BitVector -> BitVector
 
-zx a b | a == 0 = b
+zx a b | a == bvlength b = b
 
 zx a (bv,bn) | mod bn digitBitSize == 0 =
-  zx (a - re) (Vector.snoc bv 0, bn + re) where re = min digitBitSize a
+  zx a (Vector.snoc bv 0, bn + re) where re = min digitBitSize a
 
 -- Sets excess bits of bit-vector to zero
 
 zx a (bv,bn) =
   let zc = mod (-bn) digitBitSize
-      re = min zc a
+      re = min zc (a-bn)
       msd = (Vector.last bv) .&. (shift (-1 :: Word) (-zc))
-  in zx (a - re) (Vector.snoc (Vector.init bv) msd, bn + re)
+  in zx a (Vector.snoc (Vector.init bv) msd, bn + re)
 
 -- Compares two bit-vectors by zero-extending both and element-wise checking word equality
 
@@ -101,7 +101,7 @@ equal :: BitVector -> BitVector -> Bool
 equal (_,an) (_,bn) | an /= bn = error "Bit-vector arguments to EqualExpr have different bit-lengths."
 
 equal a b =
-  let ext = mod (-(bvlength a)) digitBitSize
+  let ext = Vector.length (fst a) * digitBitSize
       (av,_) = zx ext a
       (bv,_) = zx ext b
   in if Vector.and (Vector.zipWith (==) av bv) then True else False
@@ -149,7 +149,7 @@ bvlshr (av,an) (bv,bn) =
       shamtDiv = div shamt digitBitSize
       shft ah al = (shift ah (digitBitSize - shamtMod)) .|. (shift al (-shamtMod))
       na = (Vector.drop shamtDiv av, an - shamtDiv*digitBitSize)
-      (nnav, _) = zx (shamtDiv*digitBitSize) na
+      (nnav, _) = zx an na
   in (Vector.zipWith shft (Vector.snoc (Vector.drop 1 nnav) 0) nnav, an)
 
 bvshl :: BitVector -> BitVector -> BitVector
@@ -164,8 +164,8 @@ bvshl (av,an) (bv,bn) =
 
 bvconcat :: BitVector -> BitVector -> BitVector
 
-bvconcat a b = bvor (bvshl (zx blength a) (intToBv blength)) (zx (bvlength a) b)
-  where blength = bvlength b
+bvconcat a b = bvor (bvshl (zx newlength a) (intToBv $ bvlength b)) (zx newlength b)
+  where newlength = bvlength a + bvlength b
 
 bvextract :: Int -> Int -> BitVector -> BitVector
 

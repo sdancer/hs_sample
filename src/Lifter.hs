@@ -15,7 +15,7 @@ mmp :: [CsMode] -> CsInsn -> Stmt (Maybe Int)
 mmp modes a = Compound (Just $ convert (address a)) ((case toEnum (fromIntegral (insnId a)) of
   X86InsAdd -> add_s
   X86InsMov -> mov_s
-  X86InsMovzx -> mov_s --will this trigger bits missaling?
+  X86InsMovzx -> movzx_s
   X86InsSub -> sub_s
   X86InsCmp -> cmp_s
   X86InsPush -> push_s
@@ -27,7 +27,7 @@ mmp modes a = Compound (Just $ convert (address a)) ((case toEnum (fromIntegral 
   X86InsJe -> je_s
   X86InsLea -> lea_s
   X86InsInc -> inc_s
-  otherwise -> error ("Instruction " ++ mnemonic a ++ " not supported.")) modes a)
+  _ -> \_ _ -> [Comment ("Instruction " ++ mnemonic a ++ " not supported. Ignoring opcode.")]) modes a)
 
 liftAsm :: [CsMode] -> [CsInsn] -> Stmt (Maybe Int)
 

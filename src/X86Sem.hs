@@ -30,28 +30,18 @@ inc_insn_ptr modes insn = SetReg Nothing (get_insn_ptr modes) (next_instr_ptr mo
 
 getOperandAst :: [CsMode] -> CsX86Op -> Expr
 
-getOperandAst modes op = case value op of
-  (Imm value) -> BvExpr (bitVector (convert value) (convert (size op) * 8))
-  (Reg reg) -> GetReg (fromX86Reg reg)
-  (Mem mem) -> Load (convert $ size op) (getLeaAst modes mem)
-
--- Gets the memory structure for the given operand.
-
-getMem :: CsX86OpValue -> X86OpMemStruct
-
-getMem op_val = case op_val of
-  (Imm value) -> error "Memory operand expected but immediate value found instead."
-  (Reg reg) -> error "Memory operand expected but register value found instead."
-  (Mem mem) -> mem
+getOperandAst modes op =
+  let opBitSize = convert (size op) * byte_size_bit
+  in case value op of
+    (Imm value) -> BvExpr (bitVector (convert value) opBitSize)
+    (Reg reg) -> GetReg (fromX86Reg reg)
+    (Mem mem) -> Load opBitSize (getLeaAst modes mem)
 
 -- Gets the specified register after it has been zero extended to the architecture size
 
 getZxRegister :: [CsMode] -> CompoundReg -> Expr
 
-getZxRegister modes reg =
-  ZxExpr (arch_bit_size - reg_size) (GetReg reg) where
-    arch_bit_size = get_arch_bit_size modes
-    reg_size = getRegisterSize reg
+getZxRegister modes reg = ZxExpr (get_arch_bit_size modes) (GetReg reg)
 
 -- Gets an expression for the memory location of the given memory operand
 
@@ -76,7 +66,7 @@ store_stmt modes operand store_what =
   case (value operand) of
     (Reg reg) -> SetReg Nothing (fromX86Reg reg) store_what
     (Mem mem) -> Store Nothing (getLeaAst modes mem) store_what
-    _ -> error "Target of store operation is neither a register nor a memory operand."
+    _ -> Comment ("Target of store operation is neither a register nor a memory operand.")
 
 -- Make operation to set the zero flag to the value that it would have after some operation
 
@@ -244,7 +234,7 @@ cmp_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
 cmp_s modes inst =
   let (dst : src : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst
-      src_ast = SxExpr (convert ((size dst) - (size src)) * 8) (getOperandAst modes src)
+      src_ast = SxExpr (convert (size dst) * byte_size_bit) (getOperandAst modes src)
       cmp_node = BvsubExpr dst_ast src_ast
   in [
       inc_insn_ptr modes inst,
@@ -330,8 +320,8 @@ push_s modes inst =
         _ -> convert $ size src
   in [
       inc_insn_ptr modes inst,
-      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (bitVector (convert op_size) (arch_byte_size * 8)))),
-      Store Nothing (GetReg sp) (ZxExpr ((op_size - (convert $ size src)) * 8) (getOperandAst modes src))
+      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (bitVector (convert op_size) (arch_byte_size * byte_size_bit)))),
+      Store Nothing (GetReg sp) (ZxExpr (op_size * byte_size_bit) (getOperandAst modes src))
     ]
 
 -- Makes a singleton list containing the argument if the condition is true. Otherwise makes
@@ -363,7 +353,7 @@ pop_s modes inst =
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
-    ++ [store_stmt modes dst (Load op_size (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
+    ++ [store_stmt modes dst (Load (op_size * byte_size_bit) (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
     ++ (includeIf (not (sp_base || sp_reg)) [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
 
 -- Make list of operations in the IR that has the same semantics as the X86 mov instruction
@@ -374,7 +364,7 @@ mov_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
       src_ast = getOperandAst modes src_op
-      dst_size_bit = (convert $ size dst_op) * 8
+      dst_size_bit = (convert $ size dst_op) * byte_size_bit
       -- Segment registers are defined as 32 or 64 bit vectors in order to
       -- avoid having to simulate the GDT. This definition allows users to
       -- directly define their segments offset.
@@ -400,6 +390,19 @@ mov_s modes inst =
         SetReg Nothing (fromX86Flag X86FlagCf) (UndefinedExpr 1),
         SetReg Nothing (fromX86Flag X86FlagOf) (UndefinedExpr 1)]
 
+-- Make list of operations in the IR that has the same semantics as the X86 movzx instruction
+
+movzx_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
+
+movzx_s modes inst =
+  let (dst_op : src_op : _ ) = x86operands inst
+      dst_ast = getOperandAst modes dst_op
+      src_ast = getOperandAst modes src_op
+      dst_size_bit = (convert $ size dst_op) * byte_size_bit
+      zx_node = ZxExpr dst_size_bit src_ast
+  in
+    [inc_insn_ptr modes inst,
+    store_stmt modes dst_op zx_node]
 
 -- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
 
@@ -429,21 +432,26 @@ lea_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
 lea_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
-      dst_size = fromIntegral (size dst_op * 8)
-      src_ea = getLeaAst modes (getMem (value src_op))
+      dst_size = fromIntegral (size dst_op * byte_size_bit)
       src_ea_size = get_arch_bit_size modes
-      src_ea_fitted =
-        if dst_size > src_ea_size then
-          ZxExpr (dst_size - src_ea_size) src_ea
-        else if dst_size < src_ea_size then
-          ExtractExpr 0 dst_size src_ea
-        else src_ea
   in [
       inc_insn_ptr modes inst,
-      store_stmt modes dst_op src_ea_fitted
+      case value src_op of
+        Imm value -> Comment ("Memory operand expected in " ++ show inst ++ ", but immediate value found instead. Ignoring opcode.")
+        Reg reg -> Comment ("Memory operand expected in " ++ show inst ++ ", but register value found instead. Ignoring opcode.")
+        Mem mem ->
+          let src_ea = getLeaAst modes mem
+              src_ea_fitted =
+                if dst_size > src_ea_size then
+                  ZxExpr dst_size src_ea
+                else if dst_size < src_ea_size then
+                  ExtractExpr 0 dst_size src_ea
+                else src_ea
+          in store_stmt modes dst_op src_ea_fitted
     ]
 
 getCsX86arch :: Maybe CsDetail -> Maybe CsX86
+
 getCsX86arch inst =
   let arch = maybe Nothing archInfo inst
   in case arch of
@@ -451,7 +459,9 @@ getCsX86arch inst =
     _ -> Nothing
 
 x86operands :: CsInsn -> [CsX86Op]
+
 x86operands inst =
   let arch2 = getCsX86arch (Capstone.detail inst)
       ops = maybe [] operands arch2
   in ops
+
