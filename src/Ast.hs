@@ -571,7 +571,7 @@ exprToSVal (ReferenceExpr a b) = do
   case lookup (ReferenceExpr a b) exprValAssocs of
     Nothing -> do
       let newExpr = ReferenceExpr a b
-      newVar <- sWordN a (show newExpr)
+      newVar <- sWordN_ a
       put ((newExpr, newVar) : exprValAssocs)
       exprToSVal (ReferenceExpr a b)
     Just val -> return $ val
@@ -590,7 +590,7 @@ exprToSVal (Load a b) = do
     fail "Could not determine the equality of two expressions."
   else if not $ elem (Just True) results then do
     let newExpr = Load byte_size_bit b
-    newVar <- sWordN byte_size_bit (show newExpr)
+    newVar <- sWordN_ byte_size_bit
     put ((newExpr, newVar) : exprValAssocs)
     exprToSVal (Load a b)
   else do
@@ -608,12 +608,19 @@ exprToSVal (GetReg a) = do
   case lookup (GetReg rootRegister) exprValAssocs of
     Nothing -> do
       let newExpr = GetReg rootRegister
-      newVar <- sWordN (getRegisterSize rootRegister) (show newExpr)
+      newVar <- sWordN_ (getRegisterSize rootRegister)
       put ((newExpr, newVar) : exprValAssocs)
       exprToSVal (GetReg a)
     Just val -> do
       let (l,h) = registerSub a rootRegister
       return $ svExtract (h-1) l val
+
+-- If the expression is undefined, then just make an anonymous variable of the same size.
+-- If this variable does actually contribute to the value of the expression, then the
+-- SMT solver will never be able to prove the equality between this expression and any
+-- other.
+
+exprToSVal (UndefinedExpr a) = sWordN_ a
 
 -- Checks if two expressions are equal using an SMT solver. There may be no result, in
 -- which case Nothing is returned after I/O. The expressions may be equal, in which case
@@ -630,6 +637,4 @@ exprEquals a b = liftIO $ do
     Unsatisfiable _ _ -> Just False
     Satisfiable _ _ -> Just True
     _ -> Nothing
-
-{- UndefinedExpr Int -}
 
