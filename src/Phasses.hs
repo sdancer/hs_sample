@@ -74,13 +74,14 @@ insertRefs cin (SetReg id bs a) = do
         SetReg id bs relVal)
 
 insertRefs cin (Store id dst val) = do
-  pdest <- simplifyExpr <$> substituteAbs cin dst
+  pdestRel <- simplifyExpr <$> substituteRel cin dst
+  pdestAbs <- simplifyExpr <$> substituteAbs cin dst
   pvalAbs <- simplifyExpr <$> substituteAbs cin val
   pvalRel <- simplifyExpr <$> substituteRel cin val
-  relativeMemoryV <- updateMemory (relativeMemory cin) (pdest, toStaticExpr pvalRel id)
-  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdest, pvalAbs)
+  relativeMemoryV <- updateMemory (relativeMemory cin) (pdestAbs, toStaticExpr pvalRel id)
+  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdestAbs, pvalAbs)
   return (cin { relativeMemory = relativeMemoryV, absoluteMemory = absoluteMemoryV },
-        Store id pdest pvalRel)
+        Store id pdestRel pvalRel)
 
 insertRefs cin (Comment str) = return (cin, Comment str)
 

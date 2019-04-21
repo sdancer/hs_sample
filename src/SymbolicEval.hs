@@ -270,13 +270,14 @@ symExec cin (SetReg id bs a) = do
 -- add ro memory (raise exception if written)
 
 symExec cin (Store id dst val) = do
-  pdest <- simplifyExpr <$> substituteAbs cin dst
+  pdestRel <- simplifyExpr <$> substituteRel cin dst
+  pdestAbs <- simplifyExpr <$> substituteAbs cin dst
   pvalAbs <- simplifyExpr <$> substituteAbs cin val
   pvalRel <- simplifyExpr <$> substituteRel cin val
-  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdest, pvalAbs)
-  relativeMemoryV <- updateMemory (relativeMemory cin) (pdest, pvalRel)
+  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdestAbs, pvalAbs)
+  relativeMemoryV <- updateMemory (relativeMemory cin) (pdestAbs, pvalRel)
   return (cin { absoluteMemory = absoluteMemoryV, relativeMemory = relativeMemoryV },
-        Store id pdest pvalRel)
+        Store id pdestRel pvalRel)
 
 symExec cin (Comment str) = return (cin, Comment str)
 
