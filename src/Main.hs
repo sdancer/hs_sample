@@ -33,15 +33,15 @@ main = do
   -- the cross referencing that happens in the next stage.
   let labelled = snd $ labelStmts 0 lifted
   -- Simplify the labelled statements by doing constant propagation and folding.
-  let simplified = snd $ symExec (basicX86Context modes) labelled
+  simplified <- symExec (basicX86Context modes) labelled
   -- Elimate the dead code under the assumption that the flag bits are defined-before-use
   -- in the fragment of code that follows simplified. Wrap it in a statement.
-  let eliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadCode [(1408,1472)] simplified
+  let eliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadCode [(1408,1472)] (snd simplified)
   -- Now introduce cross references into the statements. This must be done after dead code
   -- elimination as it obscures the locations where expressions are loaded from storage.
-  let referenced = snd $ insertRefs (basicX86Context modes) eliminated
+  referenced <- insertRefs (basicX86Context modes) eliminated
   -- Now print the result of the above transformations.
-  -- print referenced
-  equality <- exprEquals (BvaddExpr (BvExpr (intToBv 3 32)) (GetReg (0,32))) (BvaddExpr (GetReg (0,32)) (BvExpr (intToBv 2 32)))
-  print equality
+  print $ snd referenced
+  -- equality <- exprEquals (BvaddExpr (BvExpr (intToBv 2 32)) (GetReg (0,32))) (BvaddExpr (GetReg (0,32)) (BvExpr (intToBv 2 32)))
+  -- print equality
   --print {-(getRegisterValues (reg_file (fst-} (symExec (basicX86Context modes) (snd $ labelStmts 0 lifted)){-)))-}

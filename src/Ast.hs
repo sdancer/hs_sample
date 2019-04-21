@@ -12,6 +12,7 @@ import Data.SBV.Dynamic
 import Data.Maybe
 import Control.Monad.State.Lazy
 import Data.Coerce
+import Data.Functor.Identity
 import Debug.Trace
 
 byte_size_bit :: Num a => a
@@ -418,56 +419,63 @@ flatten (Load a b) = flatten b ++ [Load a b]
 
 flatten (GetReg a) = [GetReg a]
 
+-- Going through the expression tree in post-order, monadically map expressions to other
+-- expressions using the given function.
+
+mapMExpr :: Monad m => (Expr -> m Expr) -> Expr -> m Expr
+
+mapMExpr f (BvExpr bv) = f (BvExpr bv)
+
+mapMExpr f (BvaddExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvaddExpr ma mb; }
+
+mapMExpr f (BvandExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvandExpr ma mb; }
+
+mapMExpr f (BvashrExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvashrExpr ma mb; }
+
+mapMExpr f (BvlshrExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvlshrExpr ma mb; }
+
+mapMExpr f (BvnegExpr a) = do { ma <- mapMExpr f a; f $ BvnegExpr ma; }
+
+mapMExpr f (BvnotExpr a) = do { ma <- mapMExpr f a; f $ BvnotExpr ma; }
+
+mapMExpr f (BvorExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvorExpr ma mb; }
+
+mapMExpr f (BvrolExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvrolExpr ma mb; }
+
+mapMExpr f (BvrorExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvrorExpr ma mb; }
+
+mapMExpr f (BvsubExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvsubExpr ma mb; }
+
+mapMExpr f (BvxorExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvxorExpr ma mb; }
+
+mapMExpr f (ConcatExpr a) = do { ml <- mapM (mapMExpr f) a; f $ ConcatExpr ml; }
+
+mapMExpr f (EqualExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ EqualExpr ma mb; }
+
+mapMExpr f (ExtractExpr l h e) = do { me <- mapMExpr f e; f $ ExtractExpr l h me; }
+
+mapMExpr f (ReplaceExpr l a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ ReplaceExpr l ma mb; }
+
+mapMExpr f (IteExpr a b c) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; mc <- mapMExpr f c; f $ IteExpr ma mb mc; }
+
+mapMExpr f (ReferenceExpr a b) = f $ ReferenceExpr a b
+
+mapMExpr f (SxExpr a b) = do { mb <- mapMExpr f b; f $ SxExpr a mb; }
+
+mapMExpr f (ZxExpr a b) = do { mb <- mapMExpr f b; f $ ZxExpr a mb; }
+
+mapMExpr f (UndefinedExpr a) = f $ UndefinedExpr a
+
+mapMExpr f (Load a b) = do { mb <- mapMExpr f b; f $ Load a mb; }
+
+mapMExpr f (GetReg a) = f $ GetReg a
+
 -- Going through the expression tree in post-order, map expressions to other expressions
 -- using the given function.
 
 mapExpr :: (Expr -> Expr) -> Expr -> Expr
 
-mapExpr f (BvExpr bv) = f (BvExpr bv)
-
-mapExpr f (BvaddExpr a b) = f $ BvaddExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvandExpr a b) = f $ BvandExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvashrExpr a b) = f $ BvashrExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvlshrExpr a b) = f $ BvlshrExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvnegExpr a) = f $ BvnegExpr (mapExpr f a)
-
-mapExpr f (BvnotExpr a) = f $ BvnotExpr (mapExpr f a)
-
-mapExpr f (BvorExpr a b) = f $ BvorExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvrolExpr a b) = f $ BvrolExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvrorExpr a b) = f $ BvrorExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvsubExpr a b) = f $ BvsubExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (BvxorExpr a b) = f $ BvxorExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (ConcatExpr a) = f $ ConcatExpr (map (mapExpr f) a)
-
-mapExpr f (EqualExpr a b) = f $ EqualExpr (mapExpr f a) (mapExpr f b)
-
-mapExpr f (ExtractExpr l h e) = f $ ExtractExpr l h (mapExpr f e)
-
-mapExpr f (ReplaceExpr l a b) = f $ ReplaceExpr l (mapExpr f a) (mapExpr f b)
-
-mapExpr f (IteExpr a b c) = f $ IteExpr (mapExpr f a) (mapExpr f b) (mapExpr f c)
-
-mapExpr f (ReferenceExpr a b) = f $ ReferenceExpr a b
-
-mapExpr f (SxExpr a b) = f $ SxExpr a (mapExpr f b)
-
-mapExpr f (ZxExpr a b) = f $ ZxExpr a (mapExpr f b)
-
-mapExpr f (UndefinedExpr a) = f $ UndefinedExpr a
-
-mapExpr f (Load a b) = f $ Load a (mapExpr f b)
-
-mapExpr f (GetReg a) = f $ GetReg a
+mapExpr f e = runIdentity $ mapMExpr (return . f) e
 
 -- Converts an Expr to an m SVal where MonadSymbolic m. This is to enable SMT solvers to
 -- prove various things about the expressions synthesized from program binaries.
@@ -566,7 +574,7 @@ exprToSVal (Load a b) = do
   let (exprs, svals) = unzip exprValAssocs
   results <- mapM (exprEquals (Load byte_size_bit b)) exprs
   if elem Nothing results then
-    fail "Could not determine the equality of two expressions,"
+    fail "Could not determine the equality of two expressions."
   else if not $ elem (Just True) results then do
     newVar <- sWordN_ byte_size_bit
     put ((Load byte_size_bit b, newVar) : exprValAssocs)
@@ -599,10 +607,10 @@ exprToSVal (GetReg a) = do
 exprEquals :: MonadIO m => Expr -> Expr -> m (Maybe Bool)
 
 exprEquals a b = liftIO $ do
-  thmRes <- Data.SBV.Dynamic.proveWith z3{verbose=True} $ evalStateT (do
+  thmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (do
     sva <- exprToSVal a
     svb <- exprToSVal b
-    return $ svEqual sva svb) []
+    return $ svNotEqual sva svb) []
   return $ case coerce thmRes of
     Unsatisfiable _ _ -> Just False
     Satisfiable _ _ -> Just True

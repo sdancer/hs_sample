@@ -5,6 +5,7 @@ import Ast
 import Data.Maybe
 import SymbolicEval
 import BitVector
+import Control.Monad.State.Lazy
 
 -- If a statement sets a particular register, then that register is added to the
 -- defined-before-use register list. If a statement accesses a particular register,
@@ -63,27 +64,29 @@ toStaticExpr exprVal id = case exprVal of
 -- the process. Put the result of the simplification or a self-reference into storage.
 -- Returns resulting context.
 
-insertRefs :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
+insertRefs :: MonadIO m => SymExecutionContext -> Stmt Int -> m (SymExecutionContext, Stmt Int)
 
-insertRefs cin (SetReg id bs a) =
-  let absVal = simplifyExpr $ substituteAbs cin a
-      relVal = simplifyExpr $ substituteRel cin a
-  in (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id),
+insertRefs cin (SetReg id bs a) = do
+  absVal <- simplifyExpr <$> substituteAbs cin a
+  relVal <- simplifyExpr <$> substituteRel cin a
+  return (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id),
             absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absVal },
         SetReg id bs relVal)
 
-insertRefs cin (Store id dst val) =
-  let pdest = simplifyExpr $ substituteAbs cin dst
-      pvalAbs = simplifyExpr $ substituteAbs cin val
-      pvalRel = simplifyExpr $ substituteRel cin val
-  in (cin { relativeMemory = updateMemory (relativeMemory cin) pdest (toStaticExpr pvalRel id),
-            absoluteMemory = updateMemory (absoluteMemory cin) pdest pvalAbs },
+insertRefs cin (Store id dst val) = do
+  pdest <- simplifyExpr <$> substituteAbs cin dst
+  pvalAbs <- simplifyExpr <$> substituteAbs cin val
+  pvalRel <- simplifyExpr <$> substituteRel cin val
+  relativeMemoryV <- updateMemory (relativeMemory cin) (pdest, toStaticExpr pvalRel id)
+  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdest, pvalAbs)
+  return (cin { relativeMemory = relativeMemoryV, absoluteMemory = absoluteMemoryV },
         Store id pdest pvalRel)
 
-insertRefs cin (Comment str) = (cin, Comment str)
+insertRefs cin (Comment str) = return (cin, Comment str)
 
-insertRefs cin (Compound id stmts) = (i, Compound id s)
-  where (i,s) = mapAccumL insertRefs cin stmts
+insertRefs cin (Compound id stmts) = do
+  (i,s) <- mapAccumM insertRefs cin stmts
+  return (i, Compound id s)
 
 {-
 fails on:

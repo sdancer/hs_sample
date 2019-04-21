@@ -8,6 +8,7 @@ import Data.List
 import Data.Maybe
 import Hapstone.Internal.Capstone as Capstone
 import BitVector
+import Control.Monad.State.Lazy
 
 -- Assigns the given value to the given key. Adds a new association to the list if necessary
 
@@ -69,19 +70,57 @@ getRegisterValues :: SymRegisterFile -> [(X86.X86Reg, Expr)]
 getRegisterValues regFile =
   map (\(x, y) -> (x, getRegisterValue regFile y)) (filter (isRegisterDefined regFile . snd) x86RegisterMap)
 
+-- Looks up the byte-sized expression at the given address of the byte-addressed memory.
+
+lookupExpr :: MonadIO m => [(Expr, Expr)] -> Expr -> m Expr
+
+lookupExpr [] addr = return $ Load byte_size_bit addr
+
+lookupExpr ((a, b) : e) addr = do
+  result <- exprEquals a addr
+  case result of
+    Nothing -> fail "Could not determine the equality of two symbolic addresses."
+    Just False -> lookupExpr e addr
+    Just True -> return b
+
 -- Gets the specified bytes from memory
 
-getMemoryValue :: [(Expr, Expr)] -> Expr -> Int -> Expr
+getMemoryValue :: MonadIO m => [(Expr, Expr)] -> Expr -> Int -> m Expr
 
 getMemoryValue mem a exprSize =
   let byteCount = div exprSize byte_size_bit
-      setByte expr offset =
+      setByte expr offset = do
         let currentAddress = BvaddExpr a (BvExpr $ intToBv offset (getExprSize a))
-        in ReplaceExpr (offset*byte_size_bit) expr $
-          case lookup currentAddress mem of
-            Just x -> x
-            _ -> Load byte_size_bit currentAddress
-  in simplifyExpr $ foldl setByte (UndefinedExpr exprSize) [0..byteCount-1]
+        contents <- lookupExpr mem currentAddress
+        return $ ReplaceExpr (offset*byte_size_bit) expr contents
+  in {-simplifyExpr $-} foldM setByte (UndefinedExpr exprSize) [0..byteCount-1]
+
+-- Puts the given byte-sized expression into byte-addressed memory at the given address.
+
+assignExpr :: MonadIO m => [(Expr, Expr)] -> (Expr, Expr) -> m [(Expr, Expr)]
+
+assignExpr [] (a, b) = return $ [(a, b)]
+
+assignExpr ((c, d) : e) (a, b) = do
+  result <- exprEquals c a
+  case result of
+    Nothing -> fail "Could not determine the equality of two symbolic addresses."
+    Just False -> do
+      rst <- assignExpr e (a, b)
+      return ((c, d) : rst)
+    Just True -> return $ ((a, b) : e)
+
+-- Put the given expression into memory starting at the given address and return the new
+-- context.
+
+updateMemory :: MonadIO m => [(Expr, Expr)] -> (Expr, Expr) -> m [(Expr, Expr)]
+
+updateMemory memory (address, value) =
+  let bc = div (getExprSize value) byte_size_bit
+      updateByte mem x =
+        assignExpr mem (BvaddExpr address (BvExpr $ intToBv x (getExprSize address)),
+          simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) value)
+  in foldM updateByte memory [0..bc-1]
 
 -- Represents the state of a processor: register file contents, data memory contents, and
 -- the instruction memory.
@@ -171,77 +210,79 @@ simplifyExpr expr =
 -- If the supplied expression is GetReg or Load, then substitute it for its value.
 -- Otherwise leave the expression unchanged.
 
-substituteAbsAux :: SymExecutionContext -> Expr -> Expr
+substituteAbsAux :: MonadIO m => SymExecutionContext -> Expr -> m Expr
 
-substituteAbsAux cin (GetReg bs) = getRegisterValue (absoluteRegisterFile cin) bs
+substituteAbsAux cin (GetReg bs) = return $ getRegisterValue (absoluteRegisterFile cin) bs
 
 substituteAbsAux cin (Load a memStart) = getMemoryValue (absoluteMemory cin) memStart a
 
-substituteAbsAux cin expr = expr
+substituteAbsAux cin expr = return expr
 
-substituteAbs :: SymExecutionContext -> Expr -> Expr
+substituteAbs :: MonadIO m => SymExecutionContext -> Expr -> m Expr
 
-substituteAbs cin expr = mapExpr (substituteAbsAux cin) expr
+substituteAbs cin expr = mapMExpr (substituteAbsAux cin) expr
 
-substituteRelAux :: SymExecutionContext -> Expr -> Expr
+substituteRelAux :: MonadIO m => SymExecutionContext -> Expr -> m Expr
 
 substituteRelAux cin (GetReg bs) =
-  case getRegisterValue (relativeRegisterFile cin) bs of
+  return $ case getRegisterValue (relativeRegisterFile cin) bs of
     BvExpr v -> BvExpr v
     ReferenceExpr a b -> ReferenceExpr a b
     _ -> GetReg bs
 
-substituteRelAux cin (Load a memStart) =
-  case getMemoryValue (relativeMemory cin) memStart a of
+substituteRelAux cin (Load a memStart) = do
+  mv <- getMemoryValue (relativeMemory cin) memStart a
+  return $ case simplifyExpr mv of
     BvExpr v -> BvExpr v
     ReferenceExpr a b -> ReferenceExpr a b
     _ -> Load a memStart
 
-substituteRelAux cin expr = expr
+substituteRelAux cin expr = return expr
 
-substituteRel :: SymExecutionContext -> Expr -> Expr
+substituteRel :: MonadIO m => SymExecutionContext -> Expr -> m Expr
 
-substituteRel cin expr = mapExpr (substituteRelAux cin) expr
+substituteRel cin expr = mapMExpr (substituteRelAux cin) expr
 
--- Put the given expression into memory starting at the given address and return the new
--- context.
+-- Monadic variant of mapAccumL.
 
-updateMemory :: [(Expr, Expr)] -> Expr -> Expr -> [(Expr, Expr)]
+mapAccumM :: Monad m => (a -> b -> m (a, c)) -> a -> [b] -> m (a, [c])
 
-updateMemory memory address value =
-  let bc = div (getExprSize value) byte_size_bit
-      updateByte mem x =
-        assign mem (BvaddExpr address (BvExpr $ intToBv x (getExprSize address)),
-          simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) value)
-  in foldl updateByte memory [0..bc-1]
+mapAccumM f a [] = return (a, [])
+
+mapAccumM f a (l:ls) = do
+  (b,c) <- f a l
+  (d,e) <- mapAccumM f b ls
+  return (d,c:e)
 
 -- Symbolically executes the statement on the given context, potentially simplifying it in
 -- the process. Put the result of the simplification or a self-reference into storage.
 -- Returns resulting context.
 
-symExec :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
+symExec :: MonadIO m => SymExecutionContext -> Stmt Int -> m (SymExecutionContext, Stmt Int)
 
-symExec cin (SetReg id bs a) =
-  let relExpr = simplifyExpr $ substituteRel cin a
-      absExpr = simplifyExpr $ substituteAbs cin a
-  in (cin { absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absExpr,
+symExec cin (SetReg id bs a) = do
+  relExpr <- simplifyExpr <$> substituteRel cin a
+  absExpr <- simplifyExpr <$> substituteAbs cin a
+  return (cin { absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absExpr,
             relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs relExpr },
         SetReg id bs relExpr)
 
 -- add ro memory (raise exception if written)
 
-symExec cin (Store id dst val) =
-  let pdest = simplifyExpr $ substituteAbs cin dst
-      pvalAbs = simplifyExpr $ substituteAbs cin val
-      pvalRel = simplifyExpr $ substituteRel cin val
-  in (cin { absoluteMemory = updateMemory (absoluteMemory cin) pdest pvalAbs,
-            relativeMemory = updateMemory (relativeMemory cin) pdest pvalRel },
+symExec cin (Store id dst val) = do
+  pdest <- simplifyExpr <$> substituteAbs cin dst
+  pvalAbs <- simplifyExpr <$> substituteAbs cin val
+  pvalRel <- simplifyExpr <$> substituteRel cin val
+  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdest, pvalAbs)
+  relativeMemoryV <- updateMemory (relativeMemory cin) (pdest, pvalRel)
+  return (cin { absoluteMemory = absoluteMemoryV, relativeMemory = relativeMemoryV },
         Store id pdest pvalRel)
 
-symExec cin (Comment str) = (cin, Comment str)
+symExec cin (Comment str) = return (cin, Comment str)
 
-symExec cin (Compound id stmts) = (i, Compound id s)
-  where (i,s) = mapAccumL symExec cin stmts
+symExec cin (Compound id stmts) = do
+  (i,s) <- mapAccumM symExec cin stmts
+  return (i, Compound id s)
 
 -- Labels all the statements in the instructions with a new unique identifier
 
