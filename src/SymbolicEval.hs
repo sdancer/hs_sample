@@ -90,7 +90,7 @@ getMemoryValue :: MonadIO m => [(Expr, Expr)] -> Expr -> Int -> m Expr
 getMemoryValue mem a exprSize =
   let byteCount = div exprSize byte_size_bit
       setByte expr offset = do
-        let currentAddress = BvaddExpr a (BvExpr $ intToBv offset (getExprSize a))
+        let currentAddress = BvaddExpr a (BvExpr $ toBv offset (getExprSize a))
         contents <- lookupExpr mem currentAddress
         return $ ReplaceExpr (offset*byte_size_bit) expr contents
   in {-simplifyExpr $-} foldM setByte (UndefinedExpr exprSize) [0..byteCount-1]
@@ -118,7 +118,7 @@ updateMemory :: MonadIO m => [(Expr, Expr)] -> (Expr, Expr) -> m [(Expr, Expr)]
 updateMemory memory (address, value) =
   let bc = div (getExprSize value) byte_size_bit
       updateByte mem x =
-        assignExpr mem (BvaddExpr address (BvExpr $ intToBv x (getExprSize address)),
+        assignExpr mem (BvaddExpr address (BvExpr $ toBv x (getExprSize address)),
           simplifyExpr $ ExtractExpr (x*byte_size_bit) ((x+1)*byte_size_bit) value)
   in foldM updateByte memory [0..bc-1]
 
@@ -162,13 +162,13 @@ simplifyExprAux (BvorExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvor abv bbv)
 
 simplifyExprAux (BvnotExpr (BvExpr abv)) = BvExpr (bvnot abv)
 
-simplifyExprAux (EqualExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (if bvequal abv bbv then bvone abv else bvzero abv)
+simplifyExprAux (EqualExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (if bvequal abv bbv then bvone $ bvlength abv else bvzero $ bvlength abv)
 
 simplifyExprAux (BvaddExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvadd abv bbv)
 
-simplifyExprAux (BvaddExpr a (BvExpr b)) | bvequal b (bvzero b) = a
+simplifyExprAux (BvaddExpr a (BvExpr b)) | bvequal b (bvzero $ bvlength b) = a
 
-simplifyExprAux (BvaddExpr (BvExpr b) a) | bvequal b (bvzero b) = a
+simplifyExprAux (BvaddExpr (BvExpr b) a) | bvequal b (bvzero $ bvlength b) = a
 
 simplifyExprAux (BvsubExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsub abv bbv)
 
@@ -178,7 +178,7 @@ simplifyExprAux (ZxExpr a (BvExpr bbv)) = BvExpr (zx a bbv)
 
 simplifyExprAux (ZxExpr a e) | a == getExprSize e = e
 
-simplifyExprAux (IteExpr (BvExpr a) b c) = if bvequal a (bvzero a) then c else b
+simplifyExprAux (IteExpr (BvExpr a) b c) = if bvequal a (bvzero $ bvlength a) then c else b
 -- The entire expression is being replaced
 simplifyExprAux (ReplaceExpr l a b) | getExprSize a == getExprSize b = b
 -- Join together two adjacent replacements

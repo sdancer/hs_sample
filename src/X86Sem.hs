@@ -14,7 +14,7 @@ import BitVector
 
 next_instr_ptr :: [CsMode] -> CsInsn -> Expr
 
-next_instr_ptr modes insn = BvExpr (wordToBv (insnAddr + insnLen) archBitSize)
+next_instr_ptr modes insn = BvExpr (toBv (insnAddr + insnLen) archBitSize)
   where insnAddr = convert (address insn)
         insnLen = convert (length (bytes insn))
         archBitSize = convert (get_arch_bit_size modes)
@@ -33,7 +33,7 @@ getOperandAst :: [CsMode] -> CsX86Op -> Expr
 getOperandAst modes op =
   let opBitSize = convert (size op) * byte_size_bit
   in case value op of
-    (Imm value) -> BvExpr (intToBv (convert value) opBitSize)
+    (Imm value) -> BvExpr (toBv (convert value) opBitSize)
     (Reg reg) -> GetReg (fromX86Reg reg)
     (Mem mem) -> Load opBitSize (getLeaAst modes mem)
 
@@ -51,12 +51,12 @@ getLeaAst modes mem =
   (BvaddExpr node_disp (BvaddExpr node_base node_index)) where
     arch_bit_size = get_arch_bit_size modes
     node_base = case base mem of
-      X86RegInvalid -> BvExpr (intToBv 0 arch_bit_size)
+      X86RegInvalid -> BvExpr (toBv 0 arch_bit_size)
       reg -> getZxRegister modes (fromX86Reg reg)
     node_index = case index mem of
-      X86RegInvalid -> BvExpr (intToBv 0 arch_bit_size)
-      reg -> BvmulExpr (getZxRegister modes (fromX86Reg reg)) (BvExpr (intToBv (fromIntegral $ scale mem) arch_bit_size))
-    node_disp = BvExpr (intToBv (fromIntegral $ disp' mem) arch_bit_size)
+      X86RegInvalid -> BvExpr (toBv 0 arch_bit_size)
+      reg -> BvmulExpr (getZxRegister modes (fromX86Reg reg)) (BvExpr (toBv (fromIntegral $ scale mem) arch_bit_size))
+    node_disp = BvExpr (toBv (fromIntegral $ disp' mem) arch_bit_size)
 
 -- Make operation to store the given expression in the given operand
 
@@ -75,9 +75,9 @@ zf_s :: Expr -> CsX86Op -> Stmt (Maybe a)
 zf_s parent dst =
   let bv_size = (convert $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagZf) (IteExpr
-      (EqualExpr (ExtractExpr 0 bv_size parent) (BvExpr (wordToBv 0 bv_size)))
-      (BvExpr (wordToBv 1 1))
-      (BvExpr (wordToBv 0 1)))
+      (EqualExpr (ExtractExpr 0 bv_size parent) (BvExpr (toBv 0 bv_size)))
+      (BvExpr (toBv 1 1))
+      (BvExpr (toBv 0 1)))
 
 -- Make operation to set the overflow flag to the value that it would have after an add operation
 
@@ -111,14 +111,14 @@ af_s parent dst op1ast op2ast =
   let bv_size = (convert $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagAf) (IteExpr
       (EqualExpr
-        (BvExpr (wordToBv 0x10 bv_size))
+        (BvExpr (toBv 0x10 bv_size))
         (BvandExpr
-          (BvExpr (wordToBv 0x10 bv_size))
+          (BvExpr (toBv 0x10 bv_size))
           (BvxorExpr
             (ExtractExpr 0 bv_size parent)
             (BvxorExpr op1ast op2ast))))
-      (BvExpr (wordToBv 1 1))
-      (BvExpr (wordToBv 0 1)))
+      (BvExpr (toBv 1 1))
+      (BvExpr (toBv 0 1)))
 
 -- Make operation to set the parity flag to the value that it would have after some operation
 
@@ -127,13 +127,13 @@ pf_s :: Expr -> CsX86Op -> Stmt (Maybe a)
 pf_s parent dst =
   let loop counter =
         (if counter == byte_size_bit
-          then BvExpr (wordToBv 1 1)
+          then BvExpr (toBv 1 1)
           else (BvxorExpr
             (loop (counter + 1))
             (ExtractExpr 0 1
               (BvlshrExpr
                 (ExtractExpr 0 byte_size_bit parent)
-                (BvExpr (wordToBv counter byte_size_bit)))))) in
+                (BvExpr (toBv counter byte_size_bit)))))) in
     SetReg Nothing (fromX86Flag X86FlagPf) (loop 0)
 
 -- Make operation to set the sign flag to the value that it would have after some operation
@@ -171,7 +171,7 @@ inc_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
 inc_s modes inst =
   let (dst : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst
-      src_ast = BvExpr (intToBv 1 (fromIntegral (size dst * byte_size_bit)))
+      src_ast = BvExpr (toBv 1 (fromIntegral (size dst * byte_size_bit)))
       add_node = (BvaddExpr dst_ast src_ast)
   in [
       inc_insn_ptr modes inst,
@@ -262,8 +262,8 @@ xor_s modes inst =
       pf_s xor_node dst_op,
       sf_s xor_node dst_op,
       zf_s xor_node dst_op,
-      SetReg Nothing (fromX86Flag X86FlagCf) (BvExpr (wordToBv 0 1)),
-      SetReg Nothing (fromX86Flag X86FlagOf) (BvExpr (wordToBv 0 1))
+      SetReg Nothing (fromX86Flag X86FlagCf) (BvExpr (toBv 0 1)),
+      SetReg Nothing (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 and instruction
@@ -282,8 +282,8 @@ and_s modes inst =
       pf_s and_node dst_op,
       sf_s and_node dst_op,
       zf_s and_node dst_op,
-      SetReg Nothing (fromX86Flag X86FlagCf) (BvExpr (wordToBv 0 1)),
-      SetReg Nothing (fromX86Flag X86FlagOf) (BvExpr (wordToBv 0 1))
+      SetReg Nothing (fromX86Flag X86FlagCf) (BvExpr (toBv 0 1)),
+      SetReg Nothing (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 or instruction
@@ -302,8 +302,8 @@ or_s modes inst =
       pf_s and_node dst_op,
       sf_s and_node dst_op,
       zf_s and_node dst_op,
-      SetReg Nothing (fromX86Flag X86FlagCf) (BvExpr (wordToBv 0 1)),
-      SetReg Nothing (fromX86Flag X86FlagOf) (BvExpr (wordToBv 0 1))
+      SetReg Nothing (fromX86Flag X86FlagCf) (BvExpr (toBv 0 1)),
+      SetReg Nothing (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))
     ]
 
 -- Make list of operations in the IR that has the same semantics as the X86 push instruction
@@ -320,7 +320,7 @@ push_s modes inst =
         _ -> convert $ size src
   in [
       inc_insn_ptr modes inst,
-      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (wordToBv (convert op_size) (arch_byte_size * byte_size_bit)))),
+      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (toBv (convert op_size) (arch_byte_size * byte_size_bit)))),
       Store Nothing (GetReg sp) (ZxExpr (op_size * byte_size_bit) (getOperandAst modes src))
     ]
 
@@ -349,7 +349,7 @@ pop_s modes inst =
         (Reg reg) -> isSubregisterOf (fromX86Reg reg) sp
         _ -> False
       -- An expression of the amount the stack pointer will be increased by
-      delta_val = BvExpr (wordToBv (convert op_size) arch_bit_size)
+      delta_val = BvExpr (toBv (convert op_size) arch_bit_size)
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
@@ -423,7 +423,7 @@ je_s modes inst =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst modes src_op
   in [SetReg Nothing (get_insn_ptr modes)
-      (IteExpr (EqualExpr (GetReg (fromX86Flag X86FlagZf)) (BvExpr (wordToBv 1 1)))
+      (IteExpr (EqualExpr (GetReg (fromX86Flag X86FlagZf)) (BvExpr (toBv 1 1)))
         src_ast
         (next_instr_ptr modes inst))]
 

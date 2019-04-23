@@ -484,7 +484,7 @@ mapExpr f e = runIdentity $ mapMExpr (return . f) e
 
 exprToSVal :: MonadSymbolic m => Expr -> StateT [(Expr, SVal)] m SVal
 
-exprToSVal (BvExpr a) = return $ svInteger (KBounded False (bvlength a)) (toInteger (bvToInt a))
+exprToSVal (BvExpr a) = return $ svInteger (KBounded False (bvlength a)) (fromBv a)
 
 exprToSVal (BvaddExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svPlus sva svb; }
 
@@ -550,14 +550,14 @@ exprToSVal (ReplaceExpr a b c) = do
 -- given length. If the given length is less than the size of the given expression, then
 -- truncation happens.
 exprToSVal (ZxExpr a b) = do
-  svt <- exprToSVal (BvExpr $ wordToBv 0 a)
+  svt <- exprToSVal (BvExpr $ bvzero a)
   svb <- exprToSVal b
   return $ svExtract (a-1) 0 (svJoin svt svb)
 -- No SBV function found for sign extension. Hack: concatenate zero vector to the right of
 -- the given expression, and then arithmetic shift right.
 exprToSVal (SxExpr a b) = do
   svb <- exprToSVal b
-  svt <- exprToSVal (BvExpr $ wordToBv 0 a)
+  svt <- exprToSVal (BvExpr $ bvzero a)
   return $ svExtract (a - 1) 0 (svShr (svSign $ svJoin svb svt) a)
 
 -- The following lookups are done in order to ensure that references to the same things
@@ -580,7 +580,7 @@ exprToSVal (ReferenceExpr a b) = do
 -- symbols and joining these symbols together. Add the new associations between
 -- expressions and symbols to the state.
 
-exprToSVal (Load 0 _) = exprToSVal (BvExpr (intToBv 0 0))
+exprToSVal (Load 0 _) = exprToSVal (BvExpr (bvzero 0))
 
 exprToSVal (Load a b) = do
   exprValAssocs <- get
@@ -596,7 +596,7 @@ exprToSVal (Load a b) = do
   else do
     let boolValAssocs = zip results svals
         val = fromJust $ lookup (Just True) boolValAssocs
-    rest <- exprToSVal (Load (a - byte_size_bit) (BvaddExpr b (BvExpr (intToBv 1 (getExprSize b)))))
+    rest <- exprToSVal (Load (a - byte_size_bit) (BvaddExpr b (BvExpr $ bvone (getExprSize b))))
     return $ svJoin val rest
 
 -- Turn a GetReg into an SVal by looking up the corresponding SVal in the current

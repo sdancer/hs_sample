@@ -2,7 +2,7 @@ module Main where
 
 import System.IO
 import Hapstone.Internal.Capstone as Capstone
---import EvalAst
+import EvalAst
 import Ast
 import SymbolicEval
 import BitVector
@@ -34,13 +34,13 @@ main = do
   -- the cross referencing that happens in the next stage.
   let labelled = snd $ labelStmts 0 lifted
   -- Simplify the labelled statements by doing constant propagation and folding.
-  simplified <- symExec (basicX86Context modes) labelled
+  simplified <- symExec (SymbolicEval.basicX86Context modes) labelled
   -- Elimate the dead code under the assumption that the flag bits are defined-before-use
   -- in the fragment of code that follows simplified. Wrap it in a statement.
   let eliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadCode [(1408,1472)] (snd simplified)
   -- Now introduce cross references into the statements. This must be done after dead code
   -- elimination as it obscures the locations where expressions are loaded from storage.
-  referenced <- insertRefs (basicX86Context modes) eliminated
+  referenced <- insertRefs (SymbolicEval.basicX86Context modes) eliminated
   -- Now print the result of the above transformations.
   print $ snd referenced
   -- let a = (fromList [0x0123456789ABCDEF, 0xF123456789ABCDEF], 128)
