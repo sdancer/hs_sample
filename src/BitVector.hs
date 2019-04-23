@@ -2,6 +2,7 @@ module BitVector where
 
 import Data.Vector as Vector
 import Data.Bits
+import Numeric
 
 -- Convert instance of integral type to instance of some numerical type
 
@@ -155,6 +156,13 @@ bvsub :: BitVector -> BitVector -> BitVector
 
 bvsub a b = bvadd a (bvnegate b)
 
+bvmul :: BitVector -> BitVector -> BitVector
+
+bvmul a b | bvequal b (bvzero b) = bvzero a
+
+bvmul a b = if bvbit b 0 then bvadd a rst else rst
+  where rst = bvmul (bvshl a (bvone a)) (bvlshr b (bvone b))
+
 ite :: BitVector -> BitVector -> BitVector -> BitVector
 
 ite a (bv,bn) (cv,cn) | bn == cn = (if bvequal a (bvzero a) then cv else bv, bn)
@@ -213,4 +221,12 @@ bvToInt (av,an) | 0 < an && an <= digitBitSize =
     rv .&. (shift (-1 :: Word) (an-digitBitSize)))
 
 bvToInt _ = error "Bit-vector cannot be converted to int."
+
+bvshow :: BitVector -> [Char]
+
+bvshow a | bvlength a == 0 = ""
+
+bvshow a | bvlength a <= 4 = showHex (bvToWord (zx 4 a)) ""
+
+bvshow a = (bvshow (bvextract 4 (bvlength a) a)) Prelude.++ (bvshow (bvtruncate 4 a))
 
