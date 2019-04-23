@@ -25,14 +25,6 @@ bvlength :: BitVector -> Int
 
 bvlength (av,an) = an
 
-intToBv :: Int -> BitVector
-
-intToBv a = (Vector.singleton (BitVector.convert a), finiteBitSize (0 :: Int))
-
-wordToBv :: Word -> BitVector
-
-wordToBv a = (Vector.singleton a, finiteBitSize (0 :: Word))
-
 empty :: BitVector
 
 empty = (Vector.empty, 0)
@@ -43,17 +35,21 @@ cdiv :: Int -> Int -> Int
 
 cdiv a b = -(div (-a) b)
 
-bitVector :: Word -> Int -> BitVector
+wordToBv :: Word -> Int -> BitVector
 
-bitVector a b = (generate (cdiv b digitBitSize) (\x -> if x == 0 then a else 0), b)
+wordToBv a b = zx b (Vector.singleton a, finiteBitSize (0 :: Word))
 
-zero :: BitVector -> BitVector
+intToBv :: Int -> Int -> BitVector
 
-zero a = bitVector 0 (bvlength a)
+intToBv a b = sx b (Vector.singleton (BitVector.convert a), finiteBitSize (0 :: Word))
 
-one :: BitVector -> BitVector
+bvzero :: BitVector -> BitVector
 
-one a = bitVector 1 (bvlength a)
+bvzero a = wordToBv 0 (bvlength a)
+
+bvone :: BitVector -> BitVector
+
+bvone a = wordToBv 1 (bvlength a)
 
 bvxor :: BitVector -> BitVector -> BitVector
 
@@ -81,7 +77,7 @@ bvnot (av,an) = (Vector.map complement av, an)
 
 zx :: Int -> BitVector -> BitVector
 
-zx a b | a == bvlength b = b
+zx a b | a <= bvlength b = bvtruncate a b
 
 zx a (bv,bn) | mod bn digitBitSize == 0 =
   zx a (Vector.snoc bv 0, bn + re) where re = min digitBitSize a
@@ -91,16 +87,40 @@ zx a (bv,bn) | mod bn digitBitSize == 0 =
 zx a (bv,bn) =
   let zc = mod (-bn) digitBitSize
       re = min zc (a-bn)
-      msd = (Vector.last bv) .&. (shift (-1 :: Word) (-zc))
+      msd = (Vector.last bv) .&. (shift (-1) (-zc))
   in zx a (Vector.snoc (Vector.init bv) msd, bn + re)
+
+-- Gets the given bit of the bit-vector
+
+bvbit :: BitVector -> Int -> Bool
+
+bvbit bv idx = (bvToWord $ bvextract idx (idx + 1) bv) == 1
+
+-- Sign extends the given bit-vector to the given amount
+
+sx :: Int -> BitVector -> BitVector
+
+sx a b | a <= bvlength b = bvtruncate a b
+
+sx a (bv,bn) | mod bn digitBitSize == 0 =
+  sx a (Vector.snoc bv (if bvbit (bv,bn) (bn-1) then -1 else 0), bn + re) where re = min digitBitSize a
+
+-- Sets excess bits of bit-vector to sign
+
+sx a (bv,bn) =
+  let zc = mod (-bn) digitBitSize
+      oc = mod bn digitBitSize
+      re = min zc (a-bn)
+      msd = (if bvbit (bv,bn) (bn-1) then (.&.) (shift (-1) (-zc)) else (.|.) (shift (-1) oc)) $ Vector.last bv
+  in sx a (Vector.snoc (Vector.init bv) msd, bn + re)
 
 -- Compares two bit-vectors by zero-extending both and element-wise checking word equality
 
-equal :: BitVector -> BitVector -> Bool
+bvequal :: BitVector -> BitVector -> Bool
 
-equal (_,an) (_,bn) | an /= bn = error "Bit-vector arguments to EqualExpr have different bit-lengths."
+bvequal (_,an) (_,bn) | an /= bn = error "Bit-vector arguments to EqualExpr have different bit-lengths."
 
-equal a b =
+bvequal a b =
   let ext = Vector.length (fst a) * digitBitSize
       (av,_) = zx ext a
       (bv,_) = zx ext b
@@ -129,7 +149,7 @@ bvadd _ _ = error "Bit-vector arguments to BvaddExpr have different bit-lengths.
 
 bvnegate :: BitVector -> BitVector
 
-bvnegate a = bvadd (bvnot a) (one a)
+bvnegate a = bvadd (bvnot a) (bvone a)
 
 bvsub :: BitVector -> BitVector -> BitVector
 
@@ -137,7 +157,7 @@ bvsub a b = bvadd a (bvnegate b)
 
 ite :: BitVector -> BitVector -> BitVector -> BitVector
 
-ite a (bv,bn) (cv,cn) | bn == cn = (if equal a (zero a) then cv else bv, bn)
+ite a (bv,bn) (cv,cn) | bn == cn = (if bvequal a (bvzero a) then cv else bv, bn)
 
 ite _ _ _ = error "Bit-vector arguments to IteExpr have different bit-lengths."
 
@@ -164,12 +184,12 @@ bvshl (av,an) (bv,bn) =
 
 bvconcat :: BitVector -> BitVector -> BitVector
 
-bvconcat a b = bvor (bvshl (zx newlength a) (intToBv $ bvlength b)) (zx newlength b)
+bvconcat a b = bvor (bvshl (zx newlength a) (intToBv (bvlength b) digitBitSize)) (zx newlength b)
   where newlength = bvlength a + bvlength b
 
 bvextract :: Int -> Int -> BitVector -> BitVector
 
-bvextract l h a = bvtruncate (h - l) (bvlshr a (intToBv l))
+bvextract l h a = bvtruncate (h - l) (bvlshr a (intToBv l digitBitSize))
 
 bvreplace :: BitVector -> Int -> BitVector -> BitVector
 

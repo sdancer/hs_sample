@@ -53,7 +53,7 @@ updateRegisterFile :: NumRegisterFile -> CompoundReg -> BitVector -> NumRegister
 updateRegisterFile reg_file reg val =
   let (ranges, _) = unzip reg_file
       new_ranges = addRegister ranges reg
-      undef_reg_file = map (\x -> (x, bitVector 0 (getRegisterSize x))) new_ranges
+      undef_reg_file = map (\x -> (x, wordToBv 0 (getRegisterSize x))) new_ranges
       put reg_file (reg, value) = map (\(x, y) ->
         (x, if isSubregisterOf reg x then (let pos = fst (registerSub reg x) in bvreplace y pos value) else y)) reg_file
   in foldl put undef_reg_file (reg_file ++ [(reg, val)])
@@ -73,7 +73,7 @@ getMemoryValue _ [] = Just empty
 
 getMemoryValue mem (b:bs) =
   case (lookup b mem, getMemoryValue mem bs) of
-    (Just x, Just y) -> Just (bvconcat y (intToBv x))
+    (Just x, Just y) -> Just (bvconcat y (intToBv x byte_size_bit))
     _ -> Nothing
 
 -- Represents the state of a processor: register file contents, data memory contents, and
@@ -92,7 +92,7 @@ basicX86Context :: [CsMode] -> NumExecutionContext
 
 basicX86Context modes = NumExecutionContext {
   memory = [],
-  reg_file = updateRegisterFile emptyRegisterFile (get_insn_ptr modes) (bitVector 0 (get_arch_bit_size modes)),
+  reg_file = updateRegisterFile emptyRegisterFile (get_insn_ptr modes) (wordToBv 0 (get_arch_bit_size modes)),
   proc_modes = modes
 }
 
@@ -113,7 +113,7 @@ eval cin (BvnotExpr a) = bvnot (eval cin a)
 eval cin (EqualExpr a b) =
   let abv = eval cin a
       bbv = eval cin b
-  in if equal abv bbv then one abv else zero abv
+  in if bvequal abv bbv then bvone abv else bvzero abv
 
 eval cin (BvaddExpr a b) = bvadd (eval cin a) (eval cin b)
 
@@ -124,7 +124,7 @@ eval cin (BvlshrExpr a b) = bvlshr (eval cin a) (eval cin b)
 eval cin (ZxExpr a b) = zx a (eval cin b)
 
 eval cin (IteExpr a b c) =
-  let abv = eval cin a in if equal abv (zero abv) then eval cin c else eval cin b
+  let abv = eval cin a in if bvequal abv (bvzero abv) then eval cin c else eval cin b
 
 eval cin (ReplaceExpr b c d) = bvreplace (eval cin c) b (eval cin d)
 

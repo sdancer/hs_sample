@@ -5,6 +5,7 @@ import Ast
 import Data.Maybe
 import SymbolicEval
 import BitVector
+import Control.Monad.State.Lazy
 
 -- If a statement sets a particular register, then that register is added to the
 -- defined-before-use register list. If a statement accesses a particular register,
@@ -15,12 +16,14 @@ updateDefinedRegisters :: [CompoundReg] -> Stmt a -> [CompoundReg]
 updateDefinedRegisters regs (SetReg _ reg expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
+        Load a b -> removeAccessedReg rs b
         _ -> rs
   in foldl removeAccessedReg (addRegister regs reg) (flatten expr)
 
 updateDefinedRegisters regs (Store _ _ expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
+        Load a b -> removeAccessedReg rs b
         _ -> rs
   in foldl removeAccessedReg regs (flatten expr)
 
@@ -63,26 +66,30 @@ toStaticExpr exprVal id = case exprVal of
 -- the process. Put the result of the simplification or a self-reference into storage.
 -- Returns resulting context.
 
-insertRefs :: SymExecutionContext -> Stmt Int -> (SymExecutionContext, Stmt Int)
+insertRefs :: MonadIO m => SymExecutionContext -> Stmt Int -> m (SymExecutionContext, Stmt Int)
 
-insertRefs cin (SetReg id bs a) =
-  let exprVal = mapExpr (substituteSimplify cin) a
-      regVal = toStaticExpr exprVal id
-  in (cin { reg_file = setRegisterValue (reg_file cin) bs regVal }, SetReg id bs exprVal)
+insertRefs cin (SetReg id bs a) = do
+  absVal <- simplifyExpr <$> substituteAbs cin a
+  relVal <- simplifyExpr <$> substituteRel cin a
+  return (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id),
+            absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absVal },
+        SetReg id bs relVal)
 
-insertRefs cin (Store id dst val) =
-  let pdest = mapExpr (substituteSimplify cin) dst
-      pval = mapExpr (substituteSimplify cin) val
-      memVal = toStaticExpr pval id
-  in
-      case pdest of
-        BvExpr a -> (updateMemory cin (bvToInt a) memVal, Store id pdest pval)
-        _ -> (cin, Comment "Store on symbolic memory not implemented. Ignoring statement.")
+insertRefs cin (Store id dst val) = do
+  pdestRel <- simplifyExpr <$> substituteRel cin dst
+  pdestAbs <- simplifyExpr <$> substituteAbs cin dst
+  pvalAbs <- simplifyExpr <$> substituteAbs cin val
+  pvalRel <- simplifyExpr <$> substituteRel cin val
+  relativeMemoryV <- updateMemory (relativeMemory cin) (pdestAbs, toStaticExpr pvalRel id)
+  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdestAbs, pvalAbs)
+  return (cin { relativeMemory = relativeMemoryV, absoluteMemory = absoluteMemoryV },
+        Store id pdestRel pvalRel)
 
-insertRefs cin (Comment str) = (cin, Comment str)
+insertRefs cin (Comment str) = return (cin, Comment str)
 
-insertRefs cin (Compound id stmts) = (i, Compound id s)
-  where (i,s) = mapAccumL insertRefs cin stmts
+insertRefs cin (Compound id stmts) = do
+  (i,s) <- mapAccumM insertRefs cin stmts
+  return (i, Compound id s)
 
 {-
 fails on:

@@ -7,6 +7,13 @@ import Hapstone.Internal.Capstone as Capstone
 import Data.Bits
 import Util
 import BitVector
+import Data.SBV
+import Data.SBV.Dynamic
+import Data.Maybe
+import Control.Monad.State.Lazy
+import Data.Coerce
+import Data.Functor.Identity
+import Debug.Trace
 
 byte_size_bit :: Num a => a
 byte_size_bit = 8
@@ -227,9 +234,7 @@ data Expr =
   | BvashrExpr Expr Expr -- Arithmetic shift right
   | BvlshrExpr Expr Expr -- Logical shift right
   | BvmulExpr Expr Expr -- Multiply
-  | BvnandExpr Expr Expr -- Bitwise nand
   | BvnegExpr Expr -- Negate
-  | BvnorExpr Expr Expr -- Bitwise nor
   | BvnotExpr Expr -- Bitwise not
   | BvorExpr Expr Expr -- Bitwise or
   | BvrolExpr Expr Expr -- Rotate left
@@ -249,13 +254,9 @@ data Expr =
   | BvuleExpr Expr Expr -- Unsigned less than or equal
   | BvultExpr Expr Expr -- Unsigned less than
   | BvuremExpr Expr Expr -- Unsigned remainder
-  | BvxnorExpr Expr Expr -- Bitwise xnor
   | BvxorExpr Expr Expr -- Bitwise xor
   | EqualExpr Expr Expr -- Returns 1 is equal, 0 otherwise
   | IteExpr Expr Expr Expr -- If first expression is non-zero then return second, otherwise third
-  | LandExpr Expr Expr -- Logical and
-  | LnotExpr Expr -- Logical not
-  | LorExpr Expr Expr -- Logical or
   
   -- Takes in order the low bit index (inclusive), the high bit index (exclusive), and the
   -- expression from which to extract. Size of resulting expression is the difference
@@ -329,11 +330,7 @@ getExprSize (BvashrExpr a b) = getExprSize a
 
 getExprSize (BvlshrExpr a b) = getExprSize a
 
-getExprSize (BvnandExpr a b) = getExprSize a
-
 getExprSize (BvnegExpr a) = getExprSize a
-
-getExprSize (BvnorExpr a b) = getExprSize a
 
 getExprSize (BvnotExpr a) = getExprSize a
 
@@ -344,8 +341,6 @@ getExprSize (BvrolExpr a b) = getExprSize a
 getExprSize (BvrorExpr a b) = getExprSize a
 
 getExprSize (BvsubExpr a b) = getExprSize a
-
-getExprSize (BvxnorExpr a b) = getExprSize a
 
 getExprSize (BvxorExpr a b) = getExprSize a
 
@@ -360,12 +355,6 @@ getExprSize (ExtractExpr l h e) = h - l
 getExprSize (ReplaceExpr l a b) = getExprSize a
 
 getExprSize (IteExpr a b c) = getExprSize b
-
-getExprSize (LandExpr a b) = getExprSize a
-
-getExprSize (LnotExpr a) = getExprSize a
-
-getExprSize (LorExpr a b) = getExprSize a
 
 getExprSize (ReferenceExpr a b) = a
 
@@ -394,11 +383,7 @@ flatten (BvashrExpr a b) = flatten a ++ flatten b ++ [BvashrExpr a b]
 
 flatten (BvlshrExpr a b) = flatten a ++ flatten b ++ [BvlshrExpr a b]
 
-flatten (BvnandExpr a b) = flatten a ++ flatten b ++ [BvnandExpr a b]
-
 flatten (BvnegExpr a) = flatten a ++ [BvnegExpr a]
-
-flatten (BvnorExpr a b) = flatten a ++ flatten b ++ [BvnorExpr a b]
 
 flatten (BvnotExpr a) = flatten a ++ [BvnotExpr a]
 
@@ -409,8 +394,6 @@ flatten (BvrolExpr a b) = flatten a ++ flatten b ++ [BvrolExpr a b]
 flatten (BvrorExpr a b) = flatten a ++ flatten b ++ [BvrorExpr a b]
 
 flatten (BvsubExpr a b) = flatten a ++ flatten b ++ [BvsubExpr a b]
-
-flatten (BvxnorExpr a b) = flatten a ++ flatten b ++ [BvxnorExpr a b]
 
 flatten (BvxorExpr a b) = flatten a ++ flatten b ++ [BvxorExpr a b]
 
@@ -424,12 +407,6 @@ flatten (ReplaceExpr l a b) = flatten a ++ flatten b ++ [ReplaceExpr l a b]
 
 flatten (IteExpr a b c) = flatten a ++ flatten b ++ flatten c ++ [IteExpr a b c]
 
-flatten (LandExpr a b) = flatten a ++ flatten b ++ [LandExpr a b]
-
-flatten (LnotExpr a) = flatten a ++ [LnotExpr a]
-
-flatten (LorExpr a b) = flatten a ++ flatten b ++ [LorExpr a b]
-
 flatten (ReferenceExpr a b) = [ReferenceExpr a b]
 
 flatten (SxExpr a b) = flatten b ++ [SxExpr a b]
@@ -437,71 +414,227 @@ flatten (SxExpr a b) = flatten b ++ [SxExpr a b]
 flatten (ZxExpr a b) = flatten b ++ [ZxExpr a b]
 
 flatten (UndefinedExpr a) = [UndefinedExpr a]
-
-flatten (Load a b) = flatten b ++ [Load a b]
+-- Does not recur into b. This is in order to be consistent with mapMExpr and exprToSVal
+-- which also do not recur into b.
+flatten (Load a b) = [Load a b]
 
 flatten (GetReg a) = [GetReg a]
+
+-- Going through the expression tree in post-order, monadically map expressions to other
+-- expressions using the given function.
+
+mapMExpr :: Monad m => (Expr -> m Expr) -> Expr -> m Expr
+
+mapMExpr f (BvExpr bv) = f (BvExpr bv)
+
+mapMExpr f (BvaddExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvaddExpr ma mb; }
+
+mapMExpr f (BvandExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvandExpr ma mb; }
+
+mapMExpr f (BvashrExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvashrExpr ma mb; }
+
+mapMExpr f (BvlshrExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvlshrExpr ma mb; }
+
+mapMExpr f (BvnegExpr a) = do { ma <- mapMExpr f a; f $ BvnegExpr ma; }
+
+mapMExpr f (BvnotExpr a) = do { ma <- mapMExpr f a; f $ BvnotExpr ma; }
+
+mapMExpr f (BvorExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvorExpr ma mb; }
+
+mapMExpr f (BvrolExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvrolExpr ma mb; }
+
+mapMExpr f (BvrorExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvrorExpr ma mb; }
+
+mapMExpr f (BvsubExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvsubExpr ma mb; }
+
+mapMExpr f (BvxorExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvxorExpr ma mb; }
+
+mapMExpr f (ConcatExpr a) = do { ml <- mapM (mapMExpr f) a; f $ ConcatExpr ml; }
+
+mapMExpr f (EqualExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ EqualExpr ma mb; }
+
+mapMExpr f (ExtractExpr l h e) = do { me <- mapMExpr f e; f $ ExtractExpr l h me; }
+
+mapMExpr f (ReplaceExpr l a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ ReplaceExpr l ma mb; }
+
+mapMExpr f (IteExpr a b c) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; mc <- mapMExpr f c; f $ IteExpr ma mb mc; }
+
+mapMExpr f (ReferenceExpr a b) = f $ ReferenceExpr a b
+
+mapMExpr f (SxExpr a b) = do { mb <- mapMExpr f b; f $ SxExpr a mb; }
+
+mapMExpr f (ZxExpr a b) = do { mb <- mapMExpr f b; f $ ZxExpr a mb; }
+
+mapMExpr f (UndefinedExpr a) = f $ UndefinedExpr a
+-- Must not recur into b as this will interfere with the symbolic evaluator's addressing
+-- logic.
+mapMExpr f (Load a b) = f $ Load a b
+
+mapMExpr f (GetReg a) = f $ GetReg a
 
 -- Going through the expression tree in post-order, map expressions to other expressions
 -- using the given function.
 
 mapExpr :: (Expr -> Expr) -> Expr -> Expr
 
-mapExpr f (BvExpr bv) = f (BvExpr bv)
+mapExpr f e = runIdentity $ mapMExpr (return . f) e
 
-mapExpr f (BvaddExpr a b) = f $ BvaddExpr (mapExpr f a) (mapExpr f b)
+-- Converts an Expr to an m SVal where MonadSymbolic m. This is to enable SMT solvers to
+-- prove various things about the expressions synthesized from program binaries.
 
-mapExpr f (BvandExpr a b) = f $ BvandExpr (mapExpr f a) (mapExpr f b)
+exprToSVal :: MonadSymbolic m => Expr -> StateT [(Expr, SVal)] m SVal
 
-mapExpr f (BvashrExpr a b) = f $ BvashrExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvExpr a) = return $ svInteger (KBounded False (bvlength a)) (toInteger (bvToInt a))
 
-mapExpr f (BvlshrExpr a b) = f $ BvlshrExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvaddExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svPlus sva svb; }
 
-mapExpr f (BvnandExpr a b) = f $ BvnandExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvandExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svAnd sva svb; }
 
-mapExpr f (BvnegExpr a) = f $ BvnegExpr (mapExpr f a)
+exprToSVal (BvashrExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svShiftRight (svSign sva) svb; }
 
-mapExpr f (BvnorExpr a b) = f $ BvnorExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvlshrExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svShiftRight (svUnsign sva) svb; }
 
-mapExpr f (BvnotExpr a) = f $ BvnotExpr (mapExpr f a)
+exprToSVal (BvmulExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svTimes sva svb; }
 
-mapExpr f (BvorExpr a b) = f $ BvorExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvnegExpr a) = do { sva <- exprToSVal a; return $ svUNeg sva; }
 
-mapExpr f (BvrolExpr a b) = f $ BvrolExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvnotExpr a) = do { sva <- exprToSVal a; return $ svNot sva; }
 
-mapExpr f (BvrorExpr a b) = f $ BvrorExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svOr sva svb; }
 
-mapExpr f (BvsubExpr a b) = f $ BvsubExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvrolExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRotateLeft sva svb; }
 
-mapExpr f (BvxnorExpr a b) = f $ BvxnorExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvrorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRotateRight sva svb; }
 
-mapExpr f (BvxorExpr a b) = f $ BvxorExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvsdivExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svQuot (svSign sva) (svSign svb); }
 
-mapExpr f (ConcatExpr a) = f $ ConcatExpr (map (mapExpr f) a)
+exprToSVal (BvsgeExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterEq (svSign sva) (svSign svb); }
 
-mapExpr f (EqualExpr a b) = f $ EqualExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvsgtExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterThan (svSign sva) (svSign svb); }
 
-mapExpr f (ExtractExpr l h e) = f $ ExtractExpr l h (mapExpr f e)
+exprToSVal (BvshlExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svShiftLeft sva svb; }
 
-mapExpr f (ReplaceExpr l a b) = f $ ReplaceExpr l (mapExpr f a) (mapExpr f b)
+exprToSVal (BvsleExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessEq (svSign sva) (svSign svb); }
 
-mapExpr f (IteExpr a b c) = f $ IteExpr (mapExpr f a) (mapExpr f b) (mapExpr f c)
+exprToSVal (BvsltExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessThan (svSign sva) (svSign svb); }
 
-mapExpr f (LandExpr a b) = f $ LandExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvsremExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRem (svSign sva) (svSign svb); }
 
-mapExpr f (LnotExpr a) = f $ LnotExpr (mapExpr f a)
+exprToSVal (BvsubExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svMinus sva svb; }
 
-mapExpr f (LorExpr a b) = f $ LorExpr (mapExpr f a) (mapExpr f b)
+exprToSVal (BvudivExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svQuot (svUnsign sva) (svUnsign svb); }
 
-mapExpr f (ReferenceExpr a b) = f $ ReferenceExpr a b
+exprToSVal (BvugeExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterEq (svUnsign sva) (svUnsign svb); }
 
-mapExpr f (SxExpr a b) = f $ SxExpr a (mapExpr f b)
+exprToSVal (BvugtExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterThan (svUnsign sva) (svUnsign svb); }
 
-mapExpr f (ZxExpr a b) = f $ ZxExpr a (mapExpr f b)
+exprToSVal (BvuleExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessEq (svUnsign sva) (svUnsign svb); }
 
-mapExpr f (UndefinedExpr a) = f $ UndefinedExpr a
+exprToSVal (BvultExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessThan (svUnsign sva) (svUnsign svb); }
 
-mapExpr f (Load a b) = f $ Load a (mapExpr f b)
+exprToSVal (BvuremExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRem (svUnsign sva) (svUnsign svb); }
 
-mapExpr f (GetReg a) = f $ GetReg a
+exprToSVal (BvxorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svXOr sva svb; }
+
+exprToSVal (EqualExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svEqual sva svb; }
+
+exprToSVal (IteExpr a b c) = do { sva <- exprToSVal a; svb <- exprToSVal b; svc <- exprToSVal c; return $ svIte sva svb svc; }
+
+exprToSVal (ExtractExpr a b c) = do { svc <- exprToSVal c; return $ svExtract (b-1) a svc; }
+
+exprToSVal (ReplaceExpr a b c) = do
+  svc <- exprToSVal c
+  svb <- exprToSVal b
+  return $ svJoin (svExtract (getExprSize b - 1) (a + getExprSize c) svb) (svJoin svc (svExtract (a - 1) 0 svb))
+-- The semantics for extension expressions is that the given expression is coerced to the
+-- given length. If the given length is less than the size of the given expression, then
+-- truncation happens.
+exprToSVal (ZxExpr a b) = do
+  svt <- exprToSVal (BvExpr $ wordToBv 0 a)
+  svb <- exprToSVal b
+  return $ svExtract (a-1) 0 (svJoin svt svb)
+-- No SBV function found for sign extension. Hack: concatenate zero vector to the right of
+-- the given expression, and then arithmetic shift right.
+exprToSVal (SxExpr a b) = do
+  svb <- exprToSVal b
+  svt <- exprToSVal (BvExpr $ wordToBv 0 a)
+  return $ svExtract (a - 1) 0 (svShr (svSign $ svJoin svb svt) a)
+
+-- The following lookups are done in order to ensure that references to the same things
+-- get the same symbols
+
+-- Turn a ReferenceExpr into an SVal by looking up the corresponding SVal in the current
+-- state. If it is not there, create a new symbol and add it to the state.
+
+exprToSVal (ReferenceExpr a b) = do
+  exprValAssocs <- get
+  case lookup (ReferenceExpr a b) exprValAssocs of
+    Nothing -> do
+      let newExpr = ReferenceExpr a b
+      newVar <- sWordN_ a
+      put ((newExpr, newVar) : exprValAssocs)
+      exprToSVal (ReferenceExpr a b)
+    Just val -> return $ val
+
+-- Turn a Load expression into an SVal by separately converting each of its bytes into
+-- symbols and joining these symbols together. Add the new associations between
+-- expressions and symbols to the state.
+
+exprToSVal (Load 0 _) = exprToSVal (BvExpr (intToBv 0 0))
+
+exprToSVal (Load a b) = do
+  exprValAssocs <- get
+  let (exprs, svals) = unzip exprValAssocs
+  results <- mapM (exprEquals (Load byte_size_bit b)) exprs
+  if elem Nothing results then
+    fail "Could not determine the equality of two expressions."
+  else if not $ elem (Just True) results then do
+    let newExpr = Load byte_size_bit b
+    newVar <- sWordN_ byte_size_bit
+    put ((newExpr, newVar) : exprValAssocs)
+    exprToSVal (Load a b)
+  else do
+    let boolValAssocs = zip results svals
+        val = fromJust $ lookup (Just True) boolValAssocs
+    rest <- exprToSVal (Load (a - byte_size_bit) (BvaddExpr b (BvExpr (intToBv 1 (getExprSize b)))))
+    return $ svJoin val rest
+
+-- Turn a GetReg into an SVal by looking up the corresponding SVal in the current
+-- state. If it is not there, create a new symbol and add it to the state.
+
+exprToSVal (GetReg a) = do
+  exprValAssocs <- get
+  let rootRegister = getRootRegister a
+  case lookup (GetReg rootRegister) exprValAssocs of
+    Nothing -> do
+      let newExpr = GetReg rootRegister
+      newVar <- sWordN_ (getRegisterSize rootRegister)
+      put ((newExpr, newVar) : exprValAssocs)
+      exprToSVal (GetReg a)
+    Just val -> do
+      let (l,h) = registerSub a rootRegister
+      return $ svExtract (h-1) l val
+
+-- If the expression is undefined, then just make an anonymous variable of the same size.
+-- If this variable does actually contribute to the value of the expression, then the
+-- SMT solver will never be able to prove the equality between this expression and any
+-- other.
+
+exprToSVal (UndefinedExpr a) = sWordN_ a
+
+-- Checks if two expressions are equal using an SMT solver. There may be no result, in
+-- which case Nothing is returned after I/O. The expressions may be equal, in which case
+-- Just True is returned after I/O. Otherwise Just False is returned after I/O.
+
+exprEquals :: MonadIO m => Expr -> Expr -> m (Maybe Bool)
+
+exprEquals a b = liftIO $ do
+  thmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (do
+    sva <- exprToSVal a
+    svb <- exprToSVal b
+    return $ svNotEqual sva svb) []
+  return $ case coerce thmRes of
+    Unsatisfiable _ _ -> Just False
+    Satisfiable _ _ -> Just True
+    _ -> Nothing
 
