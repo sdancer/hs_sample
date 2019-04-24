@@ -93,7 +93,7 @@ getMemoryValue mem a exprSize =
         let currentAddress = BvaddExpr a (BvExpr $ toBv offset (getExprSize a))
         contents <- lookupExpr mem currentAddress
         return $ ReplaceExpr (offset*byte_size_bit) expr contents
-  in {-simplifyExpr $-} foldM setByte (UndefinedExpr exprSize) [0..byteCount-1]
+  in foldM setByte (UndefinedExpr exprSize) [0..byteCount-1]
 
 -- Puts the given byte-sized expression into byte-addressed memory at the given address.
 
