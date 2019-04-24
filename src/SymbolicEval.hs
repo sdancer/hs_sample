@@ -150,7 +150,7 @@ basicX86Context modes = SymExecutionContext {
   procModes = modes
 }
 
--- Simplifies root of the given expression
+-- Simplifies the root of the given expression
 
 simplifyExprAux :: Expr -> Expr
 
@@ -173,6 +173,26 @@ simplifyExprAux (BvaddExpr (BvExpr b) a) | bvequal b (bvzero $ bvlength b) = a
 simplifyExprAux (BvsubExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsub abv bbv)
 
 simplifyExprAux (BvlshrExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvlshr abv bbv)
+
+simplifyExprAux (BvashrExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvashr abv bbv)
+
+simplifyExprAux (BvshlExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvshl abv bbv)
+
+simplifyExprAux (BvuleExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvule abv bbv)
+
+simplifyExprAux (BvugeExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvuge abv bbv)
+
+simplifyExprAux (BvultExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvult abv bbv)
+
+simplifyExprAux (BvugtExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvugt abv bbv)
+
+simplifyExprAux (BvsleExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsle abv bbv)
+
+simplifyExprAux (BvsgeExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsge abv bbv)
+
+simplifyExprAux (BvsltExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvslt abv bbv)
+
+simplifyExprAux (BvsgtExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsgt abv bbv)
 
 simplifyExprAux (ZxExpr a (BvExpr bbv)) = BvExpr (zx a bbv)
 
