@@ -180,7 +180,7 @@ bvashr a b = (shiftR (fromBvS a) (fromBvU b), bvlength a)
 
 bvshl :: BitVector -> BitVector -> BitVector
 
-bvshl (av,an) (bv,bn) = (shiftL av (fromInteger bv), an)
+bvshl a b = (shiftL (fromBvU a) (fromBvU b), bvlength a)
 
 bvconcat :: BitVector -> BitVector -> BitVector
 
@@ -197,7 +197,7 @@ bvreplace a b c = bvconcat (bvextract (b + bvlength c) (bvlength a) a) (bvconcat
 
 fromBvU :: Num a => BitVector -> a
 
-fromBvU (av,an) = fromInteger ((-(bit an)) .|. av)
+fromBvU (av,an) = fromInteger ((bit an - 1) .&. av)
 
 fromBvS :: Num a => BitVector -> a
 

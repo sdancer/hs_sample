@@ -730,9 +730,13 @@ exprEquals a b = liftIO $ do
   thmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (do
     sva <- exprToSVal a
     svb <- exprToSVal b
+    return $ svEqual sva svb) []
+  negThmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (do
+    sva <- exprToSVal a
+    svb <- exprToSVal b
     return $ svNotEqual sva svb) []
-  return $ case coerce thmRes of
-    Unsatisfiable _ _ -> Just False
-    Satisfiable _ _ -> Just True
+  return $ case coerce (thmRes, negThmRes) of
+    (Unsatisfiable _ _, _) -> Just True
+    (_, Unsatisfiable _ _) -> Just False
     _ -> Nothing
 
