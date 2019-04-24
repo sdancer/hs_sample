@@ -1,14 +1,8 @@
 module BitVector where
 
-import Data.Vector as Vector
 import Data.Bits
 import Numeric
-
--- Convert instance of integral type to instance of some numerical type
-
-convert :: Integral a => Num b => a -> b
-
-convert a = (fromInteger (toInteger a))
+import Numeric.Natural
 
 -- First item of tuple is bit-vector value. The least significant digit comes first.
 -- Second item of tuple is bit-vector size in bits. The bit-vector must have length equal
@@ -58,7 +52,7 @@ bvnot (av,an) = (complement av, an)
 
 zx :: Int -> BitVector -> BitVector
 
-zx a (bv,bn) = ((bit bn - 1) .&. bv, a)
+zx a b = (fromBvU b, a)
 
 -- Gets the given bit of the bit-vector
 
@@ -70,15 +64,15 @@ bvbit (bv,bn) idx = testBit bv idx
 
 sx :: Int -> BitVector -> BitVector
 
-sx a (bv,bn) = ((-(bit bn)) .|. bv, a)
+sx a b = (fromBvS b, a)
 
 -- Compares two bit-vectors by zero-extending both and element-wise checking word equality
 
 bvequal :: BitVector -> BitVector -> Bool
 
-bvequal (_,an) (_,bn) | an /= bn = error "Bit-vector arguments to EqualExpr have different bit-lengths."
+bvequal a b | bvlength a == bvlength b = fromBvU a == fromBvU b
 
-bvequal (av,an) (bv,bn) = (av .&. (bit an - 1)) == (bv .&. (bit bn - 1))
+bvequal _ _ = error "Bit-vector arguments to EqualExpr have different bit-lengths."
 
 bvadd :: BitVector -> BitVector -> BitVector
 
@@ -102,23 +96,71 @@ bvmul (av,an) (bv,bn) | an == bn = (av*bv,an)
 
 bvmul _ _ = error "Bit-vector arguments to BvmulExpr have different bit-lengths."
 
---bvult :: BitVector -> BitVector -> BitVector
+bvudiv :: BitVector -> BitVector -> BitVector
 
---bvult ([],an) ([],bn) =
+bvudiv a b | bvlength a == bvlength b = (div (fromBvU a) (fromBvU b), bvlength a)
 
---bvult (av,an) (bv,bn) | an > 0 && last av \= last bv = last av < last bv
+bvudiv _ _ = error "Bit-vector arguments to BvudivExpr have different bit-lengths."
 
---bvult (av,an) (bv,bn) | an > 0 && last av == last bv = last av < last bv
+bvsdiv :: BitVector -> BitVector -> BitVector
+
+bvsdiv a b | bvlength a == bvlength b = (div (fromBvS a) (fromBvS b), bvlength a)
+
+bvsdiv _ _ = error "Bit-vector arguments to BvsdivExpr have different bit-lengths."
+
+bvult :: BitVector -> BitVector -> BitVector
+
+bvult a b | bvlength a == bvlength b = (if fromBvU a < fromBvU b then 1 else 0, bvlength a)
+
+bvult _ _ = error "Bit-vector arguments to BvultExpr have different bit-lengths."
+
+bvule :: BitVector -> BitVector -> BitVector
+
+bvule a b | bvlength a == bvlength b = (if fromBvU a <= fromBvU b then 1 else 0, bvlength a)
+
+bvule _ _ = error "Bit-vector arguments to BvuleExpr have different bit-lengths."
+
+bvslt :: BitVector -> BitVector -> BitVector
+
+bvslt a b | bvlength a == bvlength b = (if fromBvS a < fromBvS b then 1 else 0, bvlength a)
+
+bvslt _ _ = error "Bit-vector arguments to BvsltExpr have different bit-lengths."
+
+bvsle :: BitVector -> BitVector -> BitVector
+
+bvsle a b | bvlength a == bvlength b = (if fromBvS a <= fromBvS b then 1 else 0, bvlength a)
+
+bvsle _ _ = error "Bit-vector arguments to BvsleExpr have different bit-lengths."
+
+bvugt :: BitVector -> BitVector -> BitVector
+
+bvugt a b = bvult b a
+
+bvuge :: BitVector -> BitVector -> BitVector
+
+bvuge a b = bvule b a
+
+bvsgt :: BitVector -> BitVector -> BitVector
+
+bvsgt a b = bvslt b a
+
+bvsge :: BitVector -> BitVector -> BitVector
+
+bvsge a b = bvsle b a
 
 ite :: BitVector -> BitVector -> BitVector -> BitVector
 
-ite (av,an) (bv,bn) (cv,cn) | bn == cn = (if av == 0 then cv else bv, bn)
+ite (av,an) (bv,bn) (cv,cn) | bn == cn = (if av .&. (bit an - 1) == 0 then cv else bv, bn)
 
 ite _ _ _ = error "Bit-vector arguments to IteExpr have different bit-lengths."
 
 bvlshr :: BitVector -> BitVector -> BitVector
 
-bvlshr (av,an) (bv,bn) = (shiftR (av .&. (bit an - 1)) (fromInteger bv), an)
+bvlshr a b = (shiftR (fromBvU a) (fromBvU b), bvlength a)
+
+bvashr :: BitVector -> BitVector -> BitVector
+
+bvashr a b = (shiftR (fromBvS a) (fromBvU b), bvlength a)
 
 bvshl :: BitVector -> BitVector -> BitVector
 
@@ -137,9 +179,13 @@ bvreplace :: BitVector -> Int -> BitVector -> BitVector
 
 bvreplace a b c = bvconcat (bvextract (b + bvlength c) (bvlength a) a) (bvconcat c (zx b a))
 
-fromBv :: Num a => BitVector -> a
+fromBvU :: Num a => BitVector -> a
 
-fromBv (av,an) = fromInteger ((-(bit an)) .|. av)
+fromBvU (av,an) = fromInteger ((-(bit an)) .|. av)
+
+fromBvS :: Num a => BitVector -> a
+
+fromBvS (av,an) = fromInteger (if testBit av (an-1) then (-(bit an)) .|. av else (bit an - 1) .&. av)
 
 toBv :: Integral a => a -> Int -> BitVector
 

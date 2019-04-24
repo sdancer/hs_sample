@@ -484,7 +484,7 @@ mapExpr f e = runIdentity $ mapMExpr (return . f) e
 
 exprToSVal :: MonadSymbolic m => Expr -> StateT [(Expr, SVal)] m SVal
 
-exprToSVal (BvExpr a) = return $ svInteger (KBounded False (bvlength a)) (fromBv a)
+exprToSVal (BvExpr a) = return $ svInteger (KBounded False (bvlength a)) (fromBvU a)
 
 exprToSVal (BvaddExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svPlus sva svb; }
 

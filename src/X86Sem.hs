@@ -15,9 +15,9 @@ import BitVector
 next_instr_ptr :: [CsMode] -> CsInsn -> Expr
 
 next_instr_ptr modes insn = BvExpr (toBv (insnAddr + insnLen) archBitSize)
-  where insnAddr = convert (address insn)
-        insnLen = convert (length (bytes insn))
-        archBitSize = convert (get_arch_bit_size modes)
+  where insnAddr = fromIntegral (address insn)
+        insnLen = fromIntegral (length (bytes insn))
+        archBitSize = fromIntegral (get_arch_bit_size modes)
 
 -- Make operation to increase instruction pointer by size of instruction
 
@@ -31,9 +31,9 @@ inc_insn_ptr modes insn = SetReg Nothing (get_insn_ptr modes) (next_instr_ptr mo
 getOperandAst :: [CsMode] -> CsX86Op -> Expr
 
 getOperandAst modes op =
-  let opBitSize = convert (size op) * byte_size_bit
+  let opBitSize = fromIntegral (size op) * byte_size_bit
   in case value op of
-    (Imm value) -> BvExpr (toBv (convert value) opBitSize)
+    (Imm value) -> BvExpr (toBv (fromIntegral value) opBitSize)
     (Reg reg) -> GetReg (fromX86Reg reg)
     (Mem mem) -> Load opBitSize (getLeaAst modes mem)
 
@@ -73,7 +73,7 @@ store_stmt modes operand store_what =
 zf_s :: Expr -> CsX86Op -> Stmt (Maybe a)
 
 zf_s parent dst =
-  let bv_size = (convert $ size dst) * 8 in
+  let bv_size = (fromIntegral $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagZf) (IteExpr
       (EqualExpr (ExtractExpr 0 bv_size parent) (BvExpr (toBv 0 bv_size)))
       (BvExpr (toBv 1 1))
@@ -84,7 +84,7 @@ zf_s parent dst =
 of_add_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt (Maybe a)
 
 of_add_s parent dst op1ast op2ast =
-  let bv_size = (convert $ size dst) * 8 in
+  let bv_size = (fromIntegral $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagOf) (ExtractExpr (bv_size - 1) bv_size
       (BvandExpr
         (BvxorExpr op1ast (BvnotExpr op2ast))
@@ -95,7 +95,7 @@ of_add_s parent dst op1ast op2ast =
 cf_add_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt (Maybe a)
 
 cf_add_s parent dst op1ast op2ast =
-  let bv_size = (convert $ size dst) * 8 in
+  let bv_size = (fromIntegral $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagCf) (ExtractExpr (bv_size - 1) bv_size
       (BvxorExpr (BvandExpr op1ast op2ast)
         (BvandExpr (BvxorExpr
@@ -108,7 +108,7 @@ cf_add_s parent dst op1ast op2ast =
 af_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt (Maybe a)
 
 af_s parent dst op1ast op2ast =
-  let bv_size = (convert $ size dst) * 8 in
+  let bv_size = (fromIntegral $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagAf) (IteExpr
       (EqualExpr
         (BvExpr (toBv 0x10 bv_size))
@@ -141,7 +141,7 @@ pf_s parent dst =
 sf_s :: Expr -> CsX86Op -> Stmt (Maybe a)
 
 sf_s parent dst =
-  let bv_size = (convert $ size dst) * 8 in
+  let bv_size = (fromIntegral $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagSf) (ExtractExpr (bv_size - 1) bv_size parent)
 
 -- Make list of operations in the IR that has the same semantics as the X86 add instruction
@@ -188,7 +188,7 @@ inc_s modes inst =
 cf_sub_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt (Maybe a)
 
 cf_sub_s parent dst op1ast op2ast =
-  let bv_size = (convert $ size dst) * 8 in
+  let bv_size = (fromIntegral $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagCf) (ExtractExpr (bv_size - 1) bv_size
       (BvxorExpr
         (BvxorExpr op1ast (BvxorExpr op2ast (ExtractExpr 0 bv_size parent)))
@@ -201,7 +201,7 @@ cf_sub_s parent dst op1ast op2ast =
 of_sub_s :: Expr -> CsX86Op -> Expr -> Expr -> Stmt (Maybe a)
 
 of_sub_s parent dst op1ast op2ast =
-  let bv_size = (convert $ size dst) * 8 in
+  let bv_size = (fromIntegral $ size dst) * 8 in
     SetReg Nothing (fromX86Flag X86FlagOf) (ExtractExpr (bv_size - 1) bv_size
       (BvandExpr
         (BvxorExpr op1ast op2ast)
@@ -234,7 +234,7 @@ cmp_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
 cmp_s modes inst =
   let (dst : src : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst
-      src_ast = SxExpr (convert (size dst) * byte_size_bit) (getOperandAst modes src)
+      src_ast = SxExpr (fromIntegral (size dst) * byte_size_bit) (getOperandAst modes src)
       cmp_node = BvsubExpr dst_ast src_ast
   in [
       inc_insn_ptr modes inst,
@@ -317,10 +317,10 @@ push_s modes inst =
       -- If it's an immediate source, the memory access is always based on the arch size
       op_size = case (value src) of
         (Imm _) -> arch_byte_size
-        _ -> convert $ size src
+        _ -> fromIntegral $ size src
   in [
       inc_insn_ptr modes inst,
-      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (toBv (convert op_size) (arch_byte_size * byte_size_bit)))),
+      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (toBv (fromIntegral op_size) (arch_byte_size * byte_size_bit)))),
       Store Nothing (GetReg sp) (ZxExpr (op_size * byte_size_bit) (getOperandAst modes src))
     ]
 
@@ -339,7 +339,7 @@ pop_s modes inst =
   let (dst : _) = x86operands inst
       sp = get_stack_reg modes
       arch_bit_size = get_arch_bit_size modes
-      op_size = convert $ size dst
+      op_size = fromIntegral $ size dst
       -- Is the ESP register is used as a base register for addressing a destination operand in memory?
       sp_base = case (value dst) of
         (Mem mem_struct) -> isSubregisterOf (fromX86Reg (base mem_struct)) sp
@@ -349,7 +349,7 @@ pop_s modes inst =
         (Reg reg) -> isSubregisterOf (fromX86Reg reg) sp
         _ -> False
       -- An expression of the amount the stack pointer will be increased by
-      delta_val = BvExpr (toBv (convert op_size) arch_bit_size)
+      delta_val = BvExpr (toBv (fromIntegral op_size) arch_bit_size)
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
@@ -366,7 +366,7 @@ mov_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
       src_ast = getOperandAst modes src_op
-      dst_size_bit = (convert $ size dst_op) * byte_size_bit
+      dst_size_bit = (fromIntegral $ size dst_op) * byte_size_bit
       -- Segment registers are defined as 32 or 64 bit vectors in order to
       -- avoid having to simulate the GDT. This definition allows users to
       -- directly define their segments offset.
@@ -400,7 +400,7 @@ movzx_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
       src_ast = getOperandAst modes src_op
-      dst_size_bit = (convert $ size dst_op) * byte_size_bit
+      dst_size_bit = (fromIntegral $ size dst_op) * byte_size_bit
       zx_node = ZxExpr dst_size_bit src_ast
   in
     [inc_insn_ptr modes inst,

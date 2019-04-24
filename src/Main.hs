@@ -9,7 +9,6 @@ import BitVector
 import Phasses
 import Data.Maybe
 import Data.SBV
-import Data.Vector
 
 import Lifter
 --import Simplify
@@ -43,8 +42,6 @@ main = do
   referenced <- insertRefs (SymbolicEval.basicX86Context modes) eliminated
   -- Now print the result of the above transformations.
   print $ snd referenced
-  -- let a = (fromList [0x0123456789ABCDEF, 0xF123456789ABCDEF], 128)
-  -- print $ bvshow (bvmul a a)
   -- equality <- exprEquals (BvaddExpr (BvExpr (intToBv 2 32)) (GetReg (0,32))) (BvaddExpr (GetReg (0,32)) (BvExpr (intToBv 2 32)))
   -- print equality
   --print {-(getRegisterValues (reg_file (fst-} (symExec (basicX86Context modes) (snd $ labelStmts 0 lifted)){-)))-}

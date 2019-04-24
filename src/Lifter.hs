@@ -12,7 +12,7 @@ import BitVector
 --x86 vs arm, etc?
 mmp :: [CsMode] -> CsInsn -> Stmt (Maybe Int)
 
-mmp modes a = Compound (Just $ convert (address a)) ((case toEnum (fromIntegral (insnId a)) of
+mmp modes a = Compound (Just $ fromIntegral (address a)) ((case toEnum (fromIntegral (insnId a)) of
   X86InsAdd -> add_s
   X86InsMov -> mov_s
   X86InsMovzx -> movzx_s

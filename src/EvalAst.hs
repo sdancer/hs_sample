@@ -136,7 +136,7 @@ eval cin (GetReg bs) =
     Just x -> x
 
 eval cin (Load a b) =
-  let memStart = fromBv (eval cin b)
+  let memStart = fromBvU (eval cin b)
       memVal = getMemoryValue (memory cin) [memStart..(memStart + (div a byte_size_bit) - 1)]
   in case memVal of
     Nothing -> error "Read attempted on uninitialized memory."
@@ -165,7 +165,7 @@ exec cin (Store _ dst val) =
   let updateMemory mem 0 _ _ = mem
       updateMemory mem c d v =
         updateMemory (assign mem (d, (v .&. (bit byte_size_bit - 1)))) (c - 1) (d + 1) (shift v (-byte_size_bit))
-  in cin { memory = updateMemory (memory cin) (getExprSize val) (fromBv (eval cin dst)) (fromBv (eval cin val)) }
+  in cin { memory = updateMemory (memory cin) (getExprSize val) (fromBvU (eval cin dst)) (fromBvU (eval cin val)) }
 
 -- Executes a Compound statement by executing its constituents in order
 
@@ -192,7 +192,7 @@ step stmts cin =
   let procInsnPtr = get_insn_ptr (proc_modes cin)
   in case getRegisterValue (reg_file cin) procInsnPtr of
     Nothing -> error "Instruction pointer has not yet been set."
-    Just registerValue -> exec cin (lookupStmt stmts (fromBv registerValue))
+    Just registerValue -> exec cin (lookupStmt stmts (fromBvU registerValue))
 
 -- Applies the given function on the given argument a given number of times
 
