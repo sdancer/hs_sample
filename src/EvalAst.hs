@@ -102,6 +102,12 @@ eval :: NumExecutionContext -> Expr -> BitVector
 
 eval cin (BvExpr a) = a
 
+eval cin (BvmulExpr a b) = bvmul (eval cin a) (eval cin b)
+
+eval cin (BvudivExpr a b) = bvudiv (eval cin a) (eval cin b)
+
+eval cin (BvsdivExpr a b) = bvsdiv (eval cin a) (eval cin b)
+
 eval cin (BvxorExpr a b) = bvxor (eval cin a) (eval cin b)
 
 eval cin (BvandExpr a b) = bvand (eval cin a) (eval cin b)
@@ -109,11 +115,6 @@ eval cin (BvandExpr a b) = bvand (eval cin a) (eval cin b)
 eval cin (BvorExpr a b) = bvor (eval cin a) (eval cin b)
 
 eval cin (BvnotExpr a) = bvnot (eval cin a)
-
-eval cin (EqualExpr a b) =
-  let abv = eval cin a
-      bbv = eval cin b
-  in if bvequal abv bbv then bvone $ bvlength abv else bvzero $ bvlength abv
 
 eval cin (BvaddExpr a b) = bvadd (eval cin a) (eval cin b)
 
@@ -123,12 +124,29 @@ eval cin (BvlshrExpr a b) = bvlshr (eval cin a) (eval cin b)
 
 eval cin (ZxExpr a b) = zx a (eval cin b)
 
-eval cin (IteExpr a b c) =
-  let abv = eval cin a in if bvequal abv (bvzero $ bvlength abv) then eval cin c else eval cin b
+eval cin (IteExpr a b c) = if bvequal (eval cin a) bvtrue then eval cin c else eval cin b
 
 eval cin (ReplaceExpr b c d) = bvreplace (eval cin c) b (eval cin d)
 
 eval cin (ExtractExpr a b c) = bvextract a b (eval cin c)
+
+eval cin (EqualExpr a b) = boolToBv $ bvequal (eval cin a) (eval cin b)
+
+eval cin (BvugtExpr a b) = boolToBv $ bvugt (eval cin a) (eval cin b)
+
+eval cin (BvultExpr a b) = boolToBv $ bvult (eval cin a) (eval cin b)
+
+eval cin (BvugeExpr a b) = boolToBv $ bvuge (eval cin a) (eval cin b)
+
+eval cin (BvuleExpr a b) = boolToBv $ bvule (eval cin a) (eval cin b)
+
+eval cin (BvsgtExpr a b) = boolToBv $ bvsgt (eval cin a) (eval cin b)
+
+eval cin (BvsltExpr a b) = boolToBv $ bvslt (eval cin a) (eval cin b)
+
+eval cin (BvsgeExpr a b) = boolToBv $ bvsge (eval cin a) (eval cin b)
+
+eval cin (BvsleExpr a b) = boolToBv $ bvsle (eval cin a) (eval cin b)
 
 eval cin (GetReg bs) =
   case getRegisterValue (reg_file cin) bs of

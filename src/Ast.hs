@@ -322,6 +322,28 @@ data Stmt a =
 
 getExprSize :: Expr -> Int
 
+getExprSize (BvmulExpr a b) = getExprSize a
+
+getExprSize (BvudivExpr a b) = getExprSize a
+
+getExprSize (BvsdivExpr a b) = getExprSize a
+
+getExprSize (BvugtExpr a b) = 1
+
+getExprSize (BvultExpr a b) = 1
+
+getExprSize (BvugeExpr a b) = 1
+
+getExprSize (BvuleExpr a b) = 1
+
+getExprSize (BvsgtExpr a b) = 1
+
+getExprSize (BvsltExpr a b) = 1
+
+getExprSize (BvsgeExpr a b) = 1
+
+getExprSize (BvsleExpr a b) = 1
+
 getExprSize (BvaddExpr a b) = getExprSize a
 
 getExprSize (BvandExpr a b) = getExprSize a
@@ -348,7 +370,7 @@ getExprSize (BvExpr a) = bvlength a
 
 getExprSize (ConcatExpr a) = sum $ map getExprSize a
 
-getExprSize (EqualExpr a b) = getExprSize a
+getExprSize (EqualExpr a b) = 1
 
 getExprSize (ExtractExpr l h e) = h - l
 
@@ -374,6 +396,28 @@ getExprSize (GetReg a) = getRegisterSize a
 flatten :: Expr -> [Expr]
 
 flatten (BvExpr bv) = [(BvExpr bv)]
+
+flatten (BvmulExpr a b) = flatten a ++ flatten b ++ [BvmulExpr a b]
+
+flatten (BvudivExpr a b) = flatten a ++ flatten b ++ [BvudivExpr a b]
+
+flatten (BvsdivExpr a b) = flatten a ++ flatten b ++ [BvsdivExpr a b]
+
+flatten (BvugtExpr a b) = flatten a ++ flatten b ++ [BvugtExpr a b]
+
+flatten (BvultExpr a b) = flatten a ++ flatten b ++ [BvultExpr a b]
+
+flatten (BvugeExpr a b) = flatten a ++ flatten b ++ [BvugeExpr a b]
+
+flatten (BvuleExpr a b) = flatten a ++ flatten b ++ [BvuleExpr a b]
+
+flatten (BvsgtExpr a b) = flatten a ++ flatten b ++ [BvsgtExpr a b]
+
+flatten (BvsltExpr a b) = flatten a ++ flatten b ++ [BvsltExpr a b]
+
+flatten (BvsgeExpr a b) = flatten a ++ flatten b ++ [BvsgeExpr a b]
+
+flatten (BvsleExpr a b) = flatten a ++ flatten b ++ [BvsleExpr a b]
 
 flatten (BvaddExpr a b) = flatten a ++ flatten b ++ [BvaddExpr a b]
 
@@ -427,6 +471,28 @@ mapMExpr :: Monad m => (Expr -> m Expr) -> Expr -> m Expr
 
 mapMExpr f (BvExpr bv) = f (BvExpr bv)
 
+mapMExpr f (BvmulExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvmulExpr ma mb; }
+
+mapMExpr f (BvudivExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvudivExpr ma mb; }
+
+mapMExpr f (BvsdivExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvsdivExpr ma mb; }
+
+mapMExpr f (BvugtExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvugtExpr ma mb; }
+
+mapMExpr f (BvultExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvultExpr ma mb; }
+
+mapMExpr f (BvugeExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvugeExpr ma mb; }
+
+mapMExpr f (BvuleExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvuleExpr ma mb; }
+
+mapMExpr f (BvsgtExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvsgtExpr ma mb; }
+
+mapMExpr f (BvsltExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvsltExpr ma mb; }
+
+mapMExpr f (BvsgeExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvsgeExpr ma mb; }
+
+mapMExpr f (BvsleExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvsleExpr ma mb; }
+
 mapMExpr f (BvaddExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvaddExpr ma mb; }
 
 mapMExpr f (BvandExpr a b) = do { ma <- mapMExpr f a; mb <- mapMExpr f b; f $ BvandExpr ma mb; }
@@ -479,6 +545,14 @@ mapExpr :: (Expr -> Expr) -> Expr -> Expr
 
 mapExpr f e = runIdentity $ mapMExpr (return . f) e
 
+boolToBvSVal :: SVal -> SVal
+
+boolToBvSVal e = svIte e (svInteger (KBounded False 1) 1) (svInteger (KBounded False 1) 0)
+
+bvToBool :: SVal -> SVal
+
+bvToBool e = svIte (svEqual e (svInteger (KBounded False 1) 1)) svTrue svFalse
+
 -- Converts an Expr to an m SVal where MonadSymbolic m. This is to enable SMT solvers to
 -- prove various things about the expressions synthesized from program binaries.
 
@@ -508,15 +582,7 @@ exprToSVal (BvrorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; retu
 
 exprToSVal (BvsdivExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svQuot (svSign sva) (svSign svb); }
 
-exprToSVal (BvsgeExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterEq (svSign sva) (svSign svb); }
-
-exprToSVal (BvsgtExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterThan (svSign sva) (svSign svb); }
-
 exprToSVal (BvshlExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svShiftLeft sva svb; }
-
-exprToSVal (BvsleExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessEq (svSign sva) (svSign svb); }
-
-exprToSVal (BvsltExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessThan (svSign sva) (svSign svb); }
 
 exprToSVal (BvsremExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRem (svSign sva) (svSign svb); }
 
@@ -524,23 +590,55 @@ exprToSVal (BvsubExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; retu
 
 exprToSVal (BvudivExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svQuot (svUnsign sva) (svUnsign svb); }
 
-exprToSVal (BvugeExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterEq (svUnsign sva) (svUnsign svb); }
-
-exprToSVal (BvugtExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svGreaterThan (svUnsign sva) (svUnsign svb); }
-
-exprToSVal (BvuleExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessEq (svUnsign sva) (svUnsign svb); }
-
-exprToSVal (BvultExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svLessThan (svUnsign sva) (svUnsign svb); }
-
 exprToSVal (BvuremExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svRem (svUnsign sva) (svUnsign svb); }
 
 exprToSVal (BvxorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svXOr sva svb; }
 
-exprToSVal (EqualExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ svEqual sva svb; }
+exprToSVal (EqualExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ boolToBvSVal $ svEqual sva svb; }
 
-exprToSVal (IteExpr a b c) = do { sva <- exprToSVal a; svb <- exprToSVal b; svc <- exprToSVal c; return $ svIte sva svb svc; }
+exprToSVal (IteExpr a b c) = do { sva <- exprToSVal a; svb <- exprToSVal b; svc <- exprToSVal c; return $ svIte (bvToBool sva) svb svc; }
 
 exprToSVal (ExtractExpr a b c) = do { svc <- exprToSVal c; return $ svExtract (b-1) a svc; }
+
+exprToSVal (BvsgeExpr a b) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  return $ boolToBvSVal $ svGreaterEq (svSign sva) (svSign svb)
+
+exprToSVal (BvsgtExpr a b) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  return $ boolToBvSVal $ svGreaterThan (svSign sva) (svSign svb)
+
+exprToSVal (BvsleExpr a b) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  return $ boolToBvSVal $ svLessEq (svSign sva) (svSign svb)
+
+exprToSVal (BvsltExpr a b) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  return $ boolToBvSVal $ svLessThan (svSign sva) (svSign svb)
+
+exprToSVal (BvugeExpr a b) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  return $ boolToBvSVal $ svGreaterEq (svUnsign sva) (svUnsign svb)
+
+exprToSVal (BvugtExpr a b) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  return $ boolToBvSVal $ svGreaterThan (svUnsign sva) (svUnsign svb)
+
+exprToSVal (BvuleExpr a b) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  return $ boolToBvSVal $ svLessEq (svUnsign sva) (svUnsign svb)
+
+exprToSVal (BvultExpr a b) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  return $ boolToBvSVal $ svLessThan (svUnsign sva) (svUnsign svb)
 
 exprToSVal (ReplaceExpr a b c) = do
   svc <- exprToSVal c

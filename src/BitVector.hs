@@ -14,6 +14,20 @@ bvlength :: BitVector -> Int
 
 bvlength (av,an) = an
 
+bvtrue :: BitVector
+
+bvtrue = (1,1)
+
+bvfalse :: BitVector
+
+bvfalse = (0,1)
+
+boolToBv :: Bool -> BitVector
+
+boolToBv True = bvtrue
+
+boolToBv False = bvfalse
+
 empty :: BitVector
 
 empty = (0, 0)
@@ -108,51 +122,53 @@ bvsdiv a b | bvlength a == bvlength b = (div (fromBvS a) (fromBvS b), bvlength a
 
 bvsdiv _ _ = error "Bit-vector arguments to BvsdivExpr have different bit-lengths."
 
-bvult :: BitVector -> BitVector -> BitVector
+bvult :: BitVector -> BitVector -> Bool
 
-bvult a b | bvlength a == bvlength b = (if fromBvU a < fromBvU b then 1 else 0, bvlength a)
+bvult a b | bvlength a == bvlength b = fromBvU a < fromBvU b
 
 bvult _ _ = error "Bit-vector arguments to BvultExpr have different bit-lengths."
 
-bvule :: BitVector -> BitVector -> BitVector
+bvule :: BitVector -> BitVector -> Bool
 
-bvule a b | bvlength a == bvlength b = (if fromBvU a <= fromBvU b then 1 else 0, bvlength a)
+bvule a b | bvlength a == bvlength b = fromBvU a <= fromBvU b
 
 bvule _ _ = error "Bit-vector arguments to BvuleExpr have different bit-lengths."
 
-bvslt :: BitVector -> BitVector -> BitVector
+bvslt :: BitVector -> BitVector -> Bool
 
-bvslt a b | bvlength a == bvlength b = (if fromBvS a < fromBvS b then 1 else 0, bvlength a)
+bvslt a b | bvlength a == bvlength b = fromBvS a < fromBvS b
 
 bvslt _ _ = error "Bit-vector arguments to BvsltExpr have different bit-lengths."
 
-bvsle :: BitVector -> BitVector -> BitVector
+bvsle :: BitVector -> BitVector -> Bool
 
-bvsle a b | bvlength a == bvlength b = (if fromBvS a <= fromBvS b then 1 else 0, bvlength a)
+bvsle a b | bvlength a == bvlength b = fromBvS a <= fromBvS b
 
 bvsle _ _ = error "Bit-vector arguments to BvsleExpr have different bit-lengths."
 
-bvugt :: BitVector -> BitVector -> BitVector
+bvugt :: BitVector -> BitVector -> Bool
 
 bvugt a b = bvult b a
 
-bvuge :: BitVector -> BitVector -> BitVector
+bvuge :: BitVector -> BitVector -> Bool
 
 bvuge a b = bvule b a
 
-bvsgt :: BitVector -> BitVector -> BitVector
+bvsgt :: BitVector -> BitVector -> Bool
 
 bvsgt a b = bvslt b a
 
-bvsge :: BitVector -> BitVector -> BitVector
+bvsge :: BitVector -> BitVector -> Bool
 
 bvsge a b = bvsle b a
 
 ite :: BitVector -> BitVector -> BitVector -> BitVector
 
-ite (av,an) (bv,bn) (cv,cn) | bn == cn = (if av .&. (bit an - 1) == 0 then cv else bv, bn)
+ite a _ _ | bvlength a /= 1 = error "Boolean argument to IteExpr has length unequal to 1."
 
-ite _ _ _ = error "Bit-vector arguments to IteExpr have different bit-lengths."
+ite _ b c | bvlength b /= bvlength c = error "Bit-vector arguments to IteExpr have different bit-lengths."
+
+ite a b c = if fromBvU a == 1 then b else c
 
 bvlshr :: BitVector -> BitVector -> BitVector
 

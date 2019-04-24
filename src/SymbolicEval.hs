@@ -154,6 +154,12 @@ basicX86Context modes = SymExecutionContext {
 
 simplifyExprAux :: Expr -> Expr
 
+simplifyExprAux (BvmulExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvmul abv bbv)
+
+simplifyExprAux (BvudivExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvudiv abv bbv)
+
+simplifyExprAux (BvsdivExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsdiv abv bbv)
+
 simplifyExprAux (BvxorExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvxor abv bbv)
 
 simplifyExprAux (BvandExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvand abv bbv)
@@ -162,7 +168,7 @@ simplifyExprAux (BvorExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvor abv bbv)
 
 simplifyExprAux (BvnotExpr (BvExpr abv)) = BvExpr (bvnot abv)
 
-simplifyExprAux (EqualExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (if bvequal abv bbv then bvone $ bvlength abv else bvzero $ bvlength abv)
+simplifyExprAux (EqualExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (if bvequal abv bbv then toBv 1 1 else toBv 0 1)
 
 simplifyExprAux (BvaddExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvadd abv bbv)
 
@@ -178,21 +184,21 @@ simplifyExprAux (BvashrExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvashr abv bbv)
 
 simplifyExprAux (BvshlExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvshl abv bbv)
 
-simplifyExprAux (BvuleExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvule abv bbv)
+simplifyExprAux (BvuleExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (boolToBv $ bvule abv bbv)
 
-simplifyExprAux (BvugeExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvuge abv bbv)
+simplifyExprAux (BvugeExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (boolToBv $ bvuge abv bbv)
 
-simplifyExprAux (BvultExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvult abv bbv)
+simplifyExprAux (BvultExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (boolToBv $ bvult abv bbv)
 
-simplifyExprAux (BvugtExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvugt abv bbv)
+simplifyExprAux (BvugtExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (boolToBv $ bvugt abv bbv)
 
-simplifyExprAux (BvsleExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsle abv bbv)
+simplifyExprAux (BvsleExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (boolToBv $ bvsle abv bbv)
 
-simplifyExprAux (BvsgeExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsge abv bbv)
+simplifyExprAux (BvsgeExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (boolToBv $ bvsge abv bbv)
 
-simplifyExprAux (BvsltExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvslt abv bbv)
+simplifyExprAux (BvsltExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (boolToBv $ bvslt abv bbv)
 
-simplifyExprAux (BvsgtExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsgt abv bbv)
+simplifyExprAux (BvsgtExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (boolToBv $ bvsgt abv bbv)
 
 simplifyExprAux (ZxExpr a (BvExpr bbv)) = BvExpr (zx a bbv)
 
