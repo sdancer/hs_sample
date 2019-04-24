@@ -33,7 +33,7 @@ getOperandAst :: [CsMode] -> CsX86Op -> Expr
 getOperandAst modes op =
   let opBitSize = fromIntegral (size op) * byte_size_bit
   in case value op of
-    (Imm value) -> BvExpr (toBv (fromIntegral value) opBitSize)
+    (Imm value) -> BvExpr (toBv value opBitSize)
     (Reg reg) -> GetReg (fromX86Reg reg)
     (Mem mem) -> Load opBitSize (getLeaAst modes mem)
 
@@ -55,8 +55,8 @@ getLeaAst modes mem =
       reg -> getZxRegister modes (fromX86Reg reg)
     node_index = case index mem of
       X86RegInvalid -> BvExpr (toBv 0 arch_bit_size)
-      reg -> BvmulExpr (getZxRegister modes (fromX86Reg reg)) (BvExpr (toBv (fromIntegral $ scale mem) arch_bit_size))
-    node_disp = BvExpr (toBv (fromIntegral $ disp' mem) arch_bit_size)
+      reg -> BvmulExpr (getZxRegister modes (fromX86Reg reg)) (BvExpr (toBv (scale mem) arch_bit_size))
+    node_disp = BvExpr (toBv (disp' mem) arch_bit_size)
 
 -- Make operation to store the given expression in the given operand
 
@@ -312,7 +312,7 @@ push_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
 
 push_s modes inst =
   let (src : _) = x86operands inst
-      sp = (get_stack_reg modes)
+      sp = get_stack_reg modes
       arch_byte_size = get_arch_byte_size modes
       -- If it's an immediate source, the memory access is always based on the arch size
       op_size = case (value src) of
@@ -320,7 +320,7 @@ push_s modes inst =
         _ -> fromIntegral $ size src
   in [
       inc_insn_ptr modes inst,
-      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (toBv (fromIntegral op_size) (arch_byte_size * byte_size_bit)))),
+      SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (toBv op_size (arch_byte_size * byte_size_bit)))),
       Store Nothing (GetReg sp) (ZxExpr (op_size * byte_size_bit) (getOperandAst modes src))
     ]
 
@@ -349,7 +349,7 @@ pop_s modes inst =
         (Reg reg) -> isSubregisterOf (fromX86Reg reg) sp
         _ -> False
       -- An expression of the amount the stack pointer will be increased by
-      delta_val = BvExpr (toBv (fromIntegral op_size) arch_bit_size)
+      delta_val = BvExpr (toBv op_size arch_bit_size)
   in
     [inc_insn_ptr modes inst]
     ++ (includeIf sp_base [SetReg Nothing sp (BvaddExpr (GetReg sp) delta_val)])
@@ -426,6 +426,20 @@ je_s modes inst =
       (IteExpr (EqualExpr (GetReg (fromX86Flag X86FlagZf)) (BvExpr (toBv 1 1)))
         src_ast
         (next_instr_ptr modes inst))]
+
+-- Make a list of operations in the IR that has the same semantics as the X86 call instruction
+
+call_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
+
+call_s modes inst =
+  let (src_op : _ ) = x86operands inst
+      src_ast = getOperandAst modes src_op
+      sp = get_stack_reg modes
+      arch_byte_size = get_arch_byte_size modes
+  in
+      [SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (toBv arch_byte_size (arch_byte_size * byte_size_bit)))),
+      Store Nothing (GetReg sp) (next_instr_ptr modes inst),
+      SetReg Nothing (get_insn_ptr modes) src_ast]
 
 -- Make list of operations in the IR that has the same semantics as the X86 lea instruction
 

@@ -80,9 +80,12 @@ getMemoryValue mem (b:bs) =
 -- the instruction memory.
 
 data NumExecutionContext = NumExecutionContext {
-  reg_file :: NumRegisterFile, -- Holds the contents and validity of the processor registers
-  memory :: [(Int, Int)], -- Holds the contents and validity of the processor memory
-  proc_modes :: [CsMode] -- Holds the processor information that effects interpretation of instructions
+  -- Holds the contents and validity of the processor registers
+  reg_file :: NumRegisterFile,
+  -- Holds the contents and validity of the processor memory
+  memory :: [(Int, Int)],
+  -- Holds the processor information that effects interpretation of instructions
+  proc_modes :: [CsMode]
 } deriving (Eq, Show)
 
 -- Creates a context where the instruction pointer points to the first instruction, and

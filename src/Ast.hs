@@ -720,21 +720,26 @@ exprToSVal (GetReg a) = do
 
 exprToSVal (UndefinedExpr a) = sWordN_ a
 
--- Checks if two expressions are equal using an SMT solver. There may be no result, in
--- which case Nothing is returned after I/O. The expressions may be equal, in which case
--- Just True is returned after I/O. Otherwise Just False is returned after I/O.
+-- Checks if two expressions are equal using an SMT solver. Returns Just True after I/O if
+-- SMT solver is able to prove that expressions are equal for all variable assignments.
+-- Returns Just False after I/O if SMT solver is able to prove that expressions are
+-- unequal for all variable assignments. Returns Nothing after I/O is SMT solver is not
+-- able to prove either.
 
 exprEquals :: MonadIO m => Expr -> Expr -> m (Maybe Bool)
 
 exprEquals a b = liftIO $ do
+  -- Try to prove that expressions are equal for all variable assignments
   thmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (do
     sva <- exprToSVal a
     svb <- exprToSVal b
     return $ svEqual sva svb) []
+  -- Try to prove that expressions are unequal for all variable assignments
   negThmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (do
     sva <- exprToSVal a
     svb <- exprToSVal b
     return $ svNotEqual sva svb) []
+  -- Poke into internals of ThmResult. Not good.
   return $ case coerce (thmRes, negThmRes) of
     (Unsatisfiable _ _, _) -> Just True
     (_, Unsatisfiable _ _) -> Just False
