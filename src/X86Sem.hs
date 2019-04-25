@@ -286,6 +286,25 @@ and_s modes inst =
       SetReg Nothing (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))
     ]
 
+-- Make list of operations in the IR that has the same semantics as the X86 test instruction
+
+test_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
+
+test_s modes inst =
+  let (dst_op : src_op : _ ) = x86operands inst
+      dst_ast = getOperandAst modes dst_op
+      src_ast = getOperandAst modes src_op
+      test_node = (BvandExpr dst_ast src_ast)
+  in [
+      inc_insn_ptr modes inst,
+      SetReg Nothing (fromX86Flag X86FlagAf) (UndefinedExpr 1),
+      pf_s test_node dst_op,
+      sf_s test_node dst_op,
+      zf_s test_node dst_op,
+      SetReg Nothing (fromX86Flag X86FlagCf) (BvExpr (toBv 0 1)),
+      SetReg Nothing (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))
+    ]
+
 -- Make list of operations in the IR that has the same semantics as the X86 or instruction
 
 or_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]

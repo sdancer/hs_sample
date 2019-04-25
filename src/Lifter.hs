@@ -30,6 +30,7 @@ mmp modes a = Compound (Just $ fromIntegral (address a)) ((case toEnum (fromInte
   X86InsInc -> inc_s
   X86InsCall -> call_s
   X86InsRet -> ret_s
+  X86InsTest -> test_s
   _ -> \_ _ -> [Comment ("Instruction " ++ mnemonic a ++ " not supported. Ignoring opcode.")]) modes a)
 
 liftAsm :: [CsMode] -> [CsInsn] -> Stmt (Maybe Int)
