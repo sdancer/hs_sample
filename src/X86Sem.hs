@@ -422,10 +422,12 @@ je_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
 je_s modes inst =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst modes src_op
-  in [SetReg Nothing (get_insn_ptr modes)
-      (IteExpr (EqualExpr (GetReg (fromX86Flag X86FlagZf)) (BvExpr (toBv 1 1)))
-        src_ast
-        (next_instr_ptr modes inst))]
+      insn_ptr = get_insn_ptr modes
+  in
+      [SetReg Nothing insn_ptr
+        (IteExpr (EqualExpr (GetReg (fromX86Flag X86FlagZf)) (BvExpr (toBv 1 1)))
+          src_ast
+          (next_instr_ptr modes inst))]
 
 -- Make a list of operations in the IR that has the same semantics as the X86 call instruction
 
@@ -436,10 +438,27 @@ call_s modes inst =
       src_ast = getOperandAst modes src_op
       sp = get_stack_reg modes
       arch_byte_size = get_arch_byte_size modes
+      arch_bit_size = get_arch_bit_size modes
   in
-      [SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (toBv arch_byte_size (arch_byte_size * byte_size_bit)))),
+      [SetReg Nothing sp (BvsubExpr (GetReg sp) (BvExpr (toBv arch_byte_size arch_bit_size))),
       Store Nothing (GetReg sp) (next_instr_ptr modes inst),
-      SetReg Nothing (get_insn_ptr modes) src_ast]
+      SetReg Nothing (get_insn_ptr modes) (ZxExpr arch_bit_size src_ast)]
+
+-- Make a list of operations in the IR that has the same semantics as the X86 ret instruction
+
+ret_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
+
+ret_s modes inst =
+  let operands = x86operands inst
+      sp = get_stack_reg modes
+      insn_ptr = get_insn_ptr modes
+      arch_byte_size = get_arch_byte_size modes
+  in
+      [SetReg Nothing insn_ptr (GetReg sp),
+      SetReg Nothing sp (BvaddExpr (GetReg sp) (BvExpr (toBv arch_byte_size (arch_byte_size * byte_size_bit))))]
+      ++ includeIf (length operands > 0)
+          (let src_ast = getOperandAst modes (head operands)
+          in [SetReg Nothing sp (BvaddExpr (GetReg sp) (ZxExpr (arch_byte_size * byte_size_bit) src_ast))])
 
 -- Make list of operations in the IR that has the same semantics as the X86 lea instruction
 
