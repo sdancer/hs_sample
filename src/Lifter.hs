@@ -25,6 +25,7 @@ mmp modes a = Compound (Just $ fromIntegral (address a)) ((case toEnum (fromInte
   X86InsOr -> or_s
   X86InsJmp -> jmp_s
   X86InsJe -> je_s
+  X86InsJne -> jne_s
   X86InsLea -> lea_s
   X86InsInc -> inc_s
   X86InsCall -> call_s

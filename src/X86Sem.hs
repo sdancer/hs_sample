@@ -429,6 +429,20 @@ je_s modes inst =
           src_ast
           (next_instr_ptr modes inst))]
 
+-- Make a list of operations in the IR that has the same semantics as the X86 jne instruction
+
+jne_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
+
+jne_s modes inst =
+  let (src_op : _ ) = x86operands inst
+      src_ast = getOperandAst modes src_op
+      insn_ptr = get_insn_ptr modes
+  in
+      [SetReg Nothing insn_ptr
+        (IteExpr (EqualExpr (GetReg (fromX86Flag X86FlagZf)) (BvExpr (toBv 0 1)))
+          src_ast
+          (next_instr_ptr modes inst))]
+
 -- Make a list of operations in the IR that has the same semantics as the X86 call instruction
 
 call_s :: [CsMode] -> CsInsn -> [Stmt (Maybe a)]
