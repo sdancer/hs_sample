@@ -71,44 +71,73 @@ getRegisterValues regFile =
   map (\(x, y) -> (x, getRegisterValue regFile y)) (filter (isRegisterDefined regFile . snd) x86RegisterMap)
 
 -- Looks up the byte-sized expression at the given address of the byte-addressed memory.
+-- Returns something only if the given expression can be proven to be equal to an address
+-- in memory.
 
-lookupExpr :: MonadIO m => [(Expr, Expr)] -> Expr -> m Expr
+lookupExpr :: MonadIO m => [(Expr, Expr)] -> Expr -> m (Maybe Expr)
 
-lookupExpr [] addr = return $ Load byte_size_bit addr
+lookupExpr [] addr = return Nothing
 
 lookupExpr ((a, b) : e) addr = do
   result <- exprEquals a addr
   case result of
-    Nothing -> fail "Could not determine the equality of two symbolic addresses."
     Just False -> lookupExpr e addr
-    Just True -> return b
+    Just True -> return $ Just b
+    -- If the SMT solver cannot determine if lookup address is already in memory, then
+    -- just return the intended operation.
+    Nothing -> return Nothing
 
--- Gets the specified bytes from memory
+-- From memory at the address given by the first expression, get a number of bytes equal
+-- in size to the second expression. The second expression also supplies default byte
+-- values in the case that some bytes cannot be found in memory.
 
-getMemoryValue :: MonadIO m => [(Expr, Expr)] -> Expr -> Int -> m Expr
+getMemoryValue :: MonadIO m => [(Expr, Expr)] -> Expr -> Expr -> m Expr
 
-getMemoryValue mem a exprSize =
-  let byteCount = div exprSize byte_size_bit
+getMemoryValue mem a defaultExpr =
+  let byteCount = div (getExprSize defaultExpr) byte_size_bit
       setByte expr offset = do
         let currentAddress = BvaddExpr a (BvExpr $ toBv offset (getExprSize a))
         contents <- lookupExpr mem currentAddress
-        return $ ReplaceExpr (offset*byte_size_bit) expr contents
-  in foldM setByte (UndefinedExpr exprSize) [0..byteCount-1]
+        return $ case contents of
+          Just x -> ReplaceExpr (offset*byte_size_bit) expr x
+          -- If nothing was found in memory, then the default byte will remain
+          Nothing -> expr
+  in foldM setByte defaultExpr [0..byteCount-1]
+
+-- Removes the given address and possibly equal addresses from the byte-addressed memory.
+
+removeExpr :: MonadIO m => [(Expr, Expr)] -> Expr -> m [(Expr, Expr)]
+
+removeExpr [] _ = return []
+
+removeExpr ((c,f) : d) e = do
+  result <- exprEquals c e
+  case result of
+    Nothing -> removeExpr d e
+    Just True -> removeExpr d e
+    Just False -> do
+      rmed <- removeExpr d e
+      return ((c, f) : rmed)
 
 -- Puts the given byte-sized expression into byte-addressed memory at the given address.
 
 assignExpr :: MonadIO m => [(Expr, Expr)] -> (Expr, Expr) -> m [(Expr, Expr)]
 
-assignExpr [] (a, b) = return $ [(a, b)]
+assignExpr [] (a, b) = return [(a, b)]
 
 assignExpr ((c, d) : e) (a, b) = do
   result <- exprEquals c a
   case result of
-    Nothing -> fail "Could not determine the equality of two symbolic addresses."
     Just False -> do
       rst <- assignExpr e (a, b)
       return ((c, d) : rst)
-    Just True -> return $ ((a, b) : e)
+    Just True -> return ((a, b) : e)
+    -- If we are unsure of whether this is the target address in memory, then just clear
+    -- out all potential target addresses in memory, and put in the assignment supplied to
+    -- this function.
+    Nothing -> do
+      rmed <- removeExpr e a
+      return ((a, b) : rmed)
 
 -- Put the given expression into memory starting at the given address and return the new
 -- context.
@@ -241,7 +270,9 @@ simplifyExpr expr =
   let newExpr = mapExpr simplifyExprAux expr
   in if newExpr == expr then expr else simplifyExpr newExpr
 
--- If the supplied expression is GetReg or Load, then substitute it for its value.
+-- If the supplied expression is GetReg or Load, then substitute it for its absolute
+-- value. The absolute value of an expression is simply its value expressed in terms of
+-- the values of processor registers and memory at some fixed point of the program.
 -- Otherwise leave the expression unchanged.
 
 substituteAbsAux :: MonadIO m => SymExecutionContext -> Expr -> m Expr
@@ -249,14 +280,19 @@ substituteAbsAux :: MonadIO m => SymExecutionContext -> Expr -> m Expr
 substituteAbsAux cin (GetReg bs) = return $ getRegisterValue (absoluteRegisterFile cin) bs
 
 substituteAbsAux cin (Load a memStart) = do
-  memStartSubs <- substituteAbs cin memStart
-  getMemoryValue (absoluteMemory cin) (simplifyExpr memStartSubs) a
+  memStartSubs <- simplifyExpr <$> substituteAbs cin memStart
+  getMemoryValue (absoluteMemory cin) memStartSubs (Load a memStartSubs)
 
 substituteAbsAux cin expr = return expr
 
 substituteAbs :: MonadIO m => SymExecutionContext -> Expr -> m Expr
 
 substituteAbs cin expr = mapMExpr (substituteAbsAux cin) expr
+
+-- If the supplied expression is GetReg or Load, then substitute it for its relative
+-- value. The relative value of an expression is simply its value expressed in terms of
+-- the values of the processor registers and memory just before the execution of the
+-- parent statement. Otherwise leave the expression unchanged.
 
 substituteRelAux :: MonadIO m => SymExecutionContext -> Expr -> m Expr
 
@@ -267,8 +303,8 @@ substituteRelAux cin (GetReg bs) =
     _ -> GetReg bs
 
 substituteRelAux cin (Load a memStart) = do
-  memStartSubs <- substituteAbs cin memStart
-  mv <- getMemoryValue (relativeMemory cin) (simplifyExpr memStartSubs) a
+  memStartSubs <- simplifyExpr <$> substituteAbs cin memStart
+  mv <- getMemoryValue (relativeMemory cin) memStartSubs (Load a memStart)
   return $ case simplifyExpr mv of
     BvExpr v -> BvExpr v
     ReferenceExpr a b -> ReferenceExpr a b
@@ -321,17 +357,4 @@ symExec cin (Comment str) = return (cin, Comment str)
 symExec cin (Compound id stmts) = do
   (i,s) <- mapAccumM symExec cin stmts
   return (i, Compound id s)
-
--- Labels all the statements in the instructions with a new unique identifier
-
-labelStmts :: Int -> Stmt a -> (Int, Stmt Int)
-
-labelStmts start (SetReg id bs a) = (start + 1, SetReg start bs a)
-
-labelStmts start (Store id dst val) = (start + 1, Store start dst val)
--- Comments cannot be referenced, hence they do not need labels
-labelStmts start (Comment str) = (start, Comment str)
-
-labelStmts start (Compound id stmts) = (i, Compound start s)
-  where (i,s) = mapAccumL labelStmts (start + 1) stmts
 

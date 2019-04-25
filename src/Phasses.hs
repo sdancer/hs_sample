@@ -91,9 +91,16 @@ insertRefs cin (Compound id stmts) = do
   (i,s) <- mapAccumM insertRefs cin stmts
   return (i, Compound id s)
 
-{-
-fails on:
-set 1 1
-cond [ set 1 2 ]
-get 1
--}
+-- Labels all the statements in the instructions with a new unique identifier
+
+labelStmts :: Int -> Stmt a -> (Int, Stmt Int)
+
+labelStmts start (SetReg id bs a) = (start + 1, SetReg start bs a)
+
+labelStmts start (Store id dst val) = (start + 1, Store start dst val)
+-- Comments cannot be referenced, hence they do not need labels
+labelStmts start (Comment str) = (start, Comment str)
+
+labelStmts start (Compound id stmts) = (i, Compound start s)
+  where (i,s) = mapAccumL labelStmts (start + 1) stmts
+

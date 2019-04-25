@@ -556,7 +556,7 @@ bvToBool e = svIte (svEqual e (svInteger (KBounded False 1) 1)) svTrue svFalse
 -- Converts an Expr to an m SVal where MonadSymbolic m. This is to enable SMT solvers to
 -- prove various things about the expressions synthesized from program binaries.
 
-exprToSVal :: MonadSymbolic m => Expr -> StateT [(Expr, SVal)] m SVal
+exprToSVal :: MonadSymbolic m => Expr -> (StateT [(Expr, SVal)] m) SVal
 
 exprToSVal (BvExpr a) = return $ svInteger (KBounded False (bvlength a)) (fromBvU a)
 
