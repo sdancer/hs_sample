@@ -331,7 +331,7 @@ mapAccumM f a (l:ls) = do
 -- the process. Put the result of the simplification or a self-reference into storage.
 -- Returns resulting context.
 
-symExec :: MonadIO m => SymExecutionContext -> Stmt Int -> m (SymExecutionContext, Stmt Int)
+symExec :: MonadIO m => SymExecutionContext -> IdStmt -> m (SymExecutionContext, IdStmt)
 
 symExec cin (SetReg id bs a) = do
   relExpr <- simplifyExpr <$> substituteRel cin a
@@ -352,7 +352,7 @@ symExec cin (Store id dst val) = do
   return (cin { absoluteMemory = absoluteMemoryV, relativeMemory = relativeMemoryV },
         Store id pdestRel pvalRel)
 
-symExec cin (Comment str) = return (cin, Comment str)
+symExec cin (Comment id str) = return (cin, Comment id str)
 
 symExec cin (Compound id stmts) = do
   (i,s) <- mapAccumM symExec cin stmts

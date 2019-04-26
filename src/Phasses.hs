@@ -11,9 +11,9 @@ import Control.Monad.State.Lazy
 -- defined-before-use register list. If a statement accesses a particular register,
 -- then that register is removed from the defined-before-use register list.
 
-updateDefinedRegisters :: [CompoundReg] -> Stmt a -> [CompoundReg]
+updateDefinedRegisters :: [CompoundReg] -> IdStmt -> [CompoundReg]
 
-updateDefinedRegisters regs (Comment _) = regs
+updateDefinedRegisters regs (Comment _ _) = regs
 
 updateDefinedRegisters regs (SetReg _ reg expr) =
   let removeAccessedReg rs e = case e of
@@ -39,7 +39,7 @@ updateDefinedRegisters regs (Compound _ stmts) =
 -- is dead. Also returns the list of registers that have been defined before use in the
 -- fragment beginning with the supplied statement.
 
-eliminateDeadCode :: [CompoundReg] -> Stmt a -> ([CompoundReg], Maybe (Stmt a))
+eliminateDeadCode :: [CompoundReg] -> IdStmt -> ([CompoundReg], Maybe IdStmt)
 
 eliminateDeadCode regs (SetReg id reg expr) | isRegisterContained regs reg =
   (updateDefinedRegisters regs (SetReg id reg expr), Nothing)
@@ -68,7 +68,7 @@ toStaticExpr exprVal id = case exprVal of
 -- the process. Put the result of the simplification or a self-reference into storage.
 -- Returns resulting context.
 
-insertRefs :: MonadIO m => SymExecutionContext -> Stmt Int -> m (SymExecutionContext, Stmt Int)
+insertRefs :: MonadIO m => SymExecutionContext -> IdStmt -> m (SymExecutionContext, IdStmt)
 
 insertRefs cin (SetReg id bs a) = do
   absVal <- simplifyExpr <$> substituteAbs cin a
@@ -87,7 +87,7 @@ insertRefs cin (Store id dst val) = do
   return (cin { relativeMemory = relativeMemoryV, absoluteMemory = absoluteMemoryV },
         Store id pdestRel pvalRel)
 
-insertRefs cin (Comment str) = return (cin, Comment str)
+insertRefs cin (Comment id str) = return (cin, Comment id str)
 
 insertRefs cin (Compound id stmts) = do
   (i,s) <- mapAccumM insertRefs cin stmts
@@ -95,13 +95,13 @@ insertRefs cin (Compound id stmts) = do
 
 -- Labels all the statements in the instructions with a new unique identifier
 
-labelStmts :: Int -> Stmt a -> (Int, Stmt Int)
+labelStmts :: Int -> IdStmt -> (Int, IdStmt)
 
 labelStmts start (SetReg id bs a) = (start + 1, SetReg start bs a)
 
 labelStmts start (Store id dst val) = (start + 1, Store start dst val)
 -- Comments cannot be referenced, hence they do not need labels
-labelStmts start (Comment str) = (start, Comment str)
+labelStmts start (Comment id str) = (start, Comment id str)
 
 labelStmts start (Compound id stmts) = (i, Compound start s)
   where (i,s) = mapAccumL labelStmts (start + 1) stmts

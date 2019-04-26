@@ -299,23 +299,27 @@ data Expr =
 -- The statements that the machine code will be lifted to. Statements modify context and
 -- are not composable.
 
-data Stmt a =
+data Stmt a b c d =
   -- Takes in order the id of the statement, the address at which to put the expression,
   -- and the expression to store.
     Store a Expr Expr
   -- Takes in order the id of the statement, the register in which to put the expression,
   -- and the expression to store. The size of the expression must equal the size of the
   -- register.
-  | SetReg a CompoundReg Expr
+  | SetReg b CompoundReg Expr
   -- Takes in order the id of the statement, and an ordered list of statements that will
   -- be executed when this statement is executed.
-  | Compound a [Stmt a]
+  | Compound c [Stmt a b c d]
   -- An inert statement where the String argument is the actual comment. Some conditions
   -- that may cause the generation of this constructor are invalid object code and
   -- usage of unsupported instructions. Comment statements are used to ensure the
   -- successful code analysis even in the presence of hostile program inputs.
-  | Comment String
+  | Comment d String
   deriving (Eq, Show)
+
+-- A statement with a id annotations
+
+type IdStmt = Stmt Int Int Int Int
 
 -- The size of an expression can be determined statically directly from it and its
 -- subexpressions.

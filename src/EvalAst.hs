@@ -195,7 +195,7 @@ assign ((c, d) : es) (a, b) | c == a = (a, b) : es
 
 assign ((c, d) : es) (a, b) | c /= a = (c, d) : assign es (a, b)
 
-exec :: NumExecutionContext -> Stmt a -> NumExecutionContext
+exec :: NumExecutionContext -> IdStmt -> NumExecutionContext
 
 -- Executes a SetReg operation by setting each byte of the register separately
 
@@ -211,20 +211,22 @@ exec cin (Compound _ stmts) = foldl exec cin stmts
 
 -- Lookup the statement with the given id
 
-lookupStmt :: Eq a => [Stmt (Maybe a)] -> a -> Stmt (Maybe a)
+lookupStmt :: [IdStmt] -> Int -> IdStmt
 
-lookupStmt (SetReg (Just v) bs a : stmts) id | v == id = SetReg (Just v) bs a
+lookupStmt (SetReg v bs a : stmts) id | v == id = SetReg v bs a
 
-lookupStmt (Store (Just v) bs a : stmts) id | v == id = Store (Just v) bs a
+lookupStmt (Store v bs a : stmts) id | v == id = Store v bs a
 
-lookupStmt (Compound (Just v) a : stmts) id | v == id = Compound (Just v) a
+lookupStmt (Compound v a : stmts) id | v == id = Compound v a
+
+lookupStmt (Comment v a : stmts) id | v == id = Comment v a
 
 lookupStmt (stmt : stmts) id = lookupStmt stmts id
 
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
 
-step :: [Stmt (Maybe Int)] -> NumExecutionContext -> NumExecutionContext
+step :: [IdStmt] -> NumExecutionContext -> NumExecutionContext
 
 step stmts cin =
   let procInsnPtr = get_insn_ptr (procModes cin)
