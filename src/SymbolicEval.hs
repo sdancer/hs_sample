@@ -336,7 +336,7 @@ mapAccumRM f a [] = return (a, [])
 mapAccumRM f a (l:ls) = do
   (d,e) <- mapAccumRM f a ls
   (b,c) <- f d l
-  return (d,c:e)
+  return (b,c:e)
 
 -- Symbolically executes the statement on the given context, potentially simplifying it in
 -- the process. Put the result of the simplification or a self-reference into storage.
