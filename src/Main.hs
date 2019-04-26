@@ -19,7 +19,7 @@ main = do
   print "this should be in test/"
   -- Ignoring the changes to the flag registers, the following is what happens
 
-  let input = [0x53, 0x89, 0x1C, 0x24]
+  let input = [0x51, 0x89, 0x1C, 0x24]
       modes = [Capstone.CsMode32]
   asm <- disasm_buf modes input
   let lifted = case asm of

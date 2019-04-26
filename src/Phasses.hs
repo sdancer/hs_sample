@@ -149,21 +149,14 @@ toStaticExpr exprVal id = case exprVal of
 insertRefs :: MonadIO m => SymExecutionContext -> AbsStmt -> m (SymExecutionContext, AbsStmt)
 
 insertRefs cin (SetReg (id, absVal) bs a) = do
-  absVal <- simplifyExpr <$> substituteAbs cin a
   relVal <- simplifyExpr <$> substituteRel cin a
-  return (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id),
-            absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absVal },
+  return (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id) },
         SetReg (id, absVal) bs relVal)
 
-insertRefs cin (Store (id, absAddr, absVal) dst val) = do
-  pdestRel <- simplifyExpr <$> substituteRel cin dst
-  pdestAbs <- simplifyExpr <$> substituteAbs cin dst
-  pvalAbs <- simplifyExpr <$> substituteAbs cin val
-  pvalRel <- simplifyExpr <$> substituteRel cin val
+insertRefs cin (Store (id, pdestAbs, absVal) pdestRel pvalRel) = do
+  pvalRel <- simplifyExpr <$> substituteRel cin pvalRel
   relativeMemoryV <- updateMemory (relativeMemory cin) (pdestAbs, toStaticExpr pvalRel id)
-  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdestAbs, pvalAbs)
-  return (cin { relativeMemory = relativeMemoryV, absoluteMemory = absoluteMemoryV },
-        Store (id, absAddr, absVal) pdestRel pvalRel)
+  return (cin { relativeMemory = relativeMemoryV }, Store (id, pdestAbs, absVal) pdestRel pvalRel)
 
 insertRefs cin (Comment id str) = return (cin, Comment id str)
 
