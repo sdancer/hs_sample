@@ -11,7 +11,7 @@ import Control.Monad.State.Lazy
 -- defined-before-use register list. If a statement accesses a particular register,
 -- then that register is removed from the defined-before-use register list.
 
-updateDefinedRegisters :: [CompoundReg] -> IdStmt -> [CompoundReg]
+updateDefinedRegisters :: [CompoundReg] -> AbsStmt -> [CompoundReg]
 
 updateDefinedRegisters regs (Comment _ _) = regs
 
@@ -39,7 +39,7 @@ updateDefinedRegisters regs (Compound _ stmts) =
 -- is dead. Also returns the list of registers that have been defined before use in the
 -- fragment beginning with the supplied statement.
 
-eliminateDeadCode :: [CompoundReg] -> IdStmt -> ([CompoundReg], Maybe IdStmt)
+eliminateDeadCode :: [CompoundReg] -> AbsStmt -> ([CompoundReg], Maybe AbsStmt)
 
 eliminateDeadCode regs (SetReg id reg expr) | isRegisterContained regs reg =
   (updateDefinedRegisters regs (SetReg id reg expr), Nothing)
@@ -68,16 +68,16 @@ toStaticExpr exprVal id = case exprVal of
 -- the process. Put the result of the simplification or a self-reference into storage.
 -- Returns resulting context.
 
-insertRefs :: MonadIO m => SymExecutionContext -> IdStmt -> m (SymExecutionContext, IdStmt)
+insertRefs :: MonadIO m => SymExecutionContext -> AbsStmt -> m (SymExecutionContext, AbsStmt)
 
-insertRefs cin (SetReg id bs a) = do
+insertRefs cin (SetReg (id, absVal) bs a) = do
   absVal <- simplifyExpr <$> substituteAbs cin a
   relVal <- simplifyExpr <$> substituteRel cin a
   return (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id),
             absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absVal },
-        SetReg id bs relVal)
+        SetReg (id, absVal) bs relVal)
 
-insertRefs cin (Store id dst val) = do
+insertRefs cin (Store (id, absAddr, absVal) dst val) = do
   pdestRel <- simplifyExpr <$> substituteRel cin dst
   pdestAbs <- simplifyExpr <$> substituteAbs cin dst
   pvalAbs <- simplifyExpr <$> substituteAbs cin val
@@ -85,7 +85,7 @@ insertRefs cin (Store id dst val) = do
   relativeMemoryV <- updateMemory (relativeMemory cin) (pdestAbs, toStaticExpr pvalRel id)
   absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdestAbs, pvalAbs)
   return (cin { relativeMemory = relativeMemoryV, absoluteMemory = absoluteMemoryV },
-        Store id pdestRel pvalRel)
+        Store (id, absAddr, absVal) pdestRel pvalRel)
 
 insertRefs cin (Comment id str) = return (cin, Comment id str)
 
@@ -95,14 +95,26 @@ insertRefs cin (Compound id stmts) = do
 
 -- Labels all the statements in the instructions with a new unique identifier
 
-labelStmts :: Int -> IdStmt -> (Int, IdStmt)
+labelStmts :: Int -> Stmt a b c d -> (Int, IdStmt)
 
 labelStmts start (SetReg id bs a) = (start + 1, SetReg start bs a)
 
 labelStmts start (Store id dst val) = (start + 1, Store start dst val)
--- Comments cannot be referenced, hence they do not need labels
-labelStmts start (Comment id str) = (start, Comment id str)
+
+labelStmts start (Comment id str) = (start + 1, Comment start str)
 
 labelStmts start (Compound id stmts) = (i, Compound start s)
   where (i,s) = mapAccumL labelStmts (start + 1) stmts
+
+-- Convert absolute statements to id statements
+
+absToIdStmt :: AbsStmt -> IdStmt
+
+absToIdStmt (SetReg (id, _) bs a) = SetReg id bs a
+
+absToIdStmt (Store (id, _, _) dst val) = Store id dst val
+
+absToIdStmt (Comment id str) = Comment id str
+
+absToIdStmt (Compound id stmts) = Compound id (map absToIdStmt stmts)
 

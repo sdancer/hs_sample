@@ -222,7 +222,7 @@ is_control_reg reg = elem reg
   X86RegCr14, X86RegCr15]
 
 -- The expressions that the machine code will be lifted to. Expressions do not modify
--- context but are composable.
+-- context.
 
 data Expr =
   -- Literal bit-vector. The size of this expression equals that of the bit-vector.
@@ -296,8 +296,7 @@ data Expr =
   | VariableExpr
   deriving (Eq, Show)
 
--- The statements that the machine code will be lifted to. Statements modify context and
--- are not composable.
+-- The statements that the machine code will be lifted to. Statements modify context.
 
 data Stmt a b c d =
   -- Takes in order the id of the statement, the address at which to put the expression,
@@ -320,6 +319,13 @@ data Stmt a b c d =
 -- A statement with a id annotations
 
 type IdStmt = Stmt Int Int Int Int
+
+-- A statement annotated with ids and absolute expressions. Store is parameterized by an
+-- id, an absolute memory expression, and an absolute value expression. SetReg is
+-- parameterized by an id, and an absolute value expression. The rest are just
+-- parameterized by ids.
+
+type AbsStmt = Stmt (Int, Expr, Expr) (Int, Expr) Int Int
 
 -- The size of an expression can be determined statically directly from it and its
 -- subexpressions.

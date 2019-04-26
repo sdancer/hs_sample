@@ -41,7 +41,7 @@ main = do
   -- elimination as it obscures the locations where expressions are loaded from storage.
   referenced <- insertRefs (SymbolicEval.basicX86Context modes) eliminated
   -- Now print the result of the above transformations.
-  print $ snd referenced
+  print (absToIdStmt $ snd referenced)
   -- equality <- exprEquals (BvaddExpr (BvExpr (intToBv 2 32)) (GetReg (0,32))) (BvaddExpr (GetReg (0,32)) (BvExpr (intToBv 2 32)))
   -- print equality
   --print {-(getRegisterValues (reg_file (fst-} (symExec (basicX86Context modes) (snd $ labelStmts 0 lifted)){-)))-}
