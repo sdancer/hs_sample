@@ -31,7 +31,7 @@ main = do
   
   -- Label the statements produced by lifting from assembly. The labels are necessary for
   -- the cross referencing that happens in the next stage.
-  let labelled = snd $ labelStmts 0 lifted
+  let labelled = snd $ labelStmts 0 (Compound undefined $ lifted)
   -- Simplify the labelled statements by doing constant propagation and folding.
   simplified <- symExec (SymbolicEval.basicX86Context modes) labelled
   -- Elimate the dead code under the assumption that the flag bits are defined-before-use

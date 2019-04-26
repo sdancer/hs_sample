@@ -10,9 +10,9 @@ import Data.Word
 import BitVector
 
 --x86 vs arm, etc?
-mmp :: [CsMode] -> CsInsn -> Stmt (Maybe Int)
+mmp :: [CsMode] -> CsInsn -> Stmt Int
 
-mmp modes a = Compound (Just $ fromIntegral (address a)) ((case toEnum (fromIntegral (insnId a)) of
+mmp modes a = Compound (fromIntegral (address a)) ((case toEnum (fromIntegral (insnId a)) of
   X86InsAdd -> add_s
   X86InsMov -> mov_s
   X86InsMovzx -> movzx_s
@@ -33,15 +33,15 @@ mmp modes a = Compound (Just $ fromIntegral (address a)) ((case toEnum (fromInte
   X86InsTest -> test_s
   _ -> \_ _ -> [Comment ("Instruction " ++ mnemonic a ++ " not supported. Ignoring opcode.")]) modes a)
 
-liftAsm :: [CsMode] -> [CsInsn] -> Stmt (Maybe Int)
+liftAsm :: [CsMode] -> [CsInsn] -> [Stmt Int]
 
-liftAsm modes buf = Compound Nothing $ map (mmp modes) buf
+liftAsm modes buf = map (mmp modes) buf
 
 disasm_buf :: [CsMode] -> [Word8] -> IO (Either CsErr [CsInsn])
 
 disasm_buf modes buffer = disasmSimpleIO $ disasm modes buffer 0
 
-liftX86toAst :: [CsMode] -> [Word8] -> IO (Stmt (Maybe Int))
+liftX86toAst :: [CsMode] -> [Word8] -> IO [Stmt Int]
 
 liftX86toAst modes input = do
   asm <- disasm_buf modes input
