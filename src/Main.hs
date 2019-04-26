@@ -34,12 +34,14 @@ main = do
   let labelled = snd $ labelStmts 0 (Compound undefined $ lifted)
   -- Simplify the labelled statements by doing constant propagation and folding.
   simplified <- symExec (SymbolicEval.basicX86Context modes) labelled
-  -- Elimate the dead code under the assumption that the flag bits are defined-before-use
+  -- Eliminate the dead SetRegs under the assumption that the flag bits are defined-before-use
   -- in the fragment of code that follows simplified. Wrap it in a statement.
-  let eliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadCode [(1408,1472)] (snd simplified)
+  let srEliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadSetRegs [(1408,1472)] (snd simplified)
+  -- Eliminate the dead Stores. Wrap it in a statement.
+  sEliminated <- Compound (-1) <$> maybeToList <$> snd <$> eliminateDeadStores [] srEliminated
   -- Now introduce cross references into the statements. This must be done after dead code
   -- elimination as it obscures the locations where expressions are loaded from storage.
-  referenced <- insertRefs (SymbolicEval.basicX86Context modes) eliminated
+  referenced <- insertRefs (SymbolicEval.basicX86Context modes) sEliminated
   -- Now print the result of the above transformations.
   print (absToIdStmt $ snd referenced)
   -- equality <- exprEquals (BvaddExpr (BvExpr (intToBv 2 32)) (GetReg (0,32))) (BvaddExpr (GetReg (0,32)) (BvExpr (intToBv 2 32)))

@@ -106,17 +106,17 @@ getMemoryValue mem a defaultExpr =
 
 -- Removes the given address and possibly equal addresses from the byte-addressed memory.
 
-removeExpr :: MonadIO m => [(Expr, Expr)] -> Expr -> m [(Expr, Expr)]
+removeExprAssoc :: MonadIO m => [(Expr, Expr)] -> Expr -> m [(Expr, Expr)]
 
-removeExpr [] _ = return []
+removeExprAssoc [] _ = return []
 
-removeExpr ((c,f) : d) e = do
+removeExprAssoc ((c,f) : d) e = do
   result <- exprEquals c e
   case result of
-    Nothing -> removeExpr d e
-    Just True -> removeExpr d e
+    Nothing -> removeExprAssoc d e
+    Just True -> removeExprAssoc d e
     Just False -> do
-      rmed <- removeExpr d e
+      rmed <- removeExprAssoc d e
       return ((c, f) : rmed)
 
 -- Puts the given byte-sized expression into byte-addressed memory at the given address.
@@ -136,7 +136,7 @@ assignExpr ((c, d) : e) (a, b) = do
     -- out all potential target addresses in memory, and put in the assignment supplied to
     -- this function.
     Nothing -> do
-      rmed <- removeExpr e a
+      rmed <- removeExprAssoc e a
       return ((a, b) : rmed)
 
 -- Put the given expression into memory starting at the given address and return the new
@@ -325,6 +325,17 @@ mapAccumM f a [] = return (a, [])
 mapAccumM f a (l:ls) = do
   (b,c) <- f a l
   (d,e) <- mapAccumM f b ls
+  return (d,c:e)
+
+-- Monadic variant of mapAccumR.
+
+mapAccumRM :: Monad m => (a -> b -> m (a, c)) -> a -> [b] -> m (a, [c])
+
+mapAccumRM f a [] = return (a, [])
+
+mapAccumRM f a (l:ls) = do
+  (d,e) <- mapAccumRM f a ls
+  (b,c) <- f d l
   return (d,c:e)
 
 -- Symbolically executes the statement on the given context, potentially simplifying it in
