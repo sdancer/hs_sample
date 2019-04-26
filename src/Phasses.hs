@@ -13,17 +13,19 @@ import Control.Monad.State.Lazy
 
 updateDefinedRegisters :: [CompoundReg] -> Stmt a -> [CompoundReg]
 
+updateDefinedRegisters regs (Comment _) = regs
+
 updateDefinedRegisters regs (SetReg _ reg expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
-        Load a b -> removeAccessedReg rs b
+        Load a b -> foldl removeAccessedReg rs (flatten b)
         _ -> rs
   in foldl removeAccessedReg (addRegister regs reg) (flatten expr)
 
 updateDefinedRegisters regs (Store _ _ expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
-        Load a b -> removeAccessedReg rs b
+        Load a b -> foldl removeAccessedReg rs (flatten b)
         _ -> rs
   in foldl removeAccessedReg regs (flatten expr)
 
