@@ -23,7 +23,6 @@ library rekitlib
             , AstTools
             , BitVector
  build-depends:     base >=4.5 && <9.8
-                    , vector
                     , containers
                     , bytestring
                     , binary
@@ -44,7 +43,6 @@ executable rekit_cli
             , EvalAst
             , SymbolicEval
  build-depends:     base >=4.5 && <9.8
-                    , vector
                     , containers
                     , bytestring
                     , binary

@@ -2,7 +2,7 @@ module Main where
 
 import System.IO
 import Hapstone.Internal.Capstone as Capstone
---import EvalAst
+import EvalAst
 import Ast
 import SymbolicEval
 import BitVector
@@ -19,7 +19,7 @@ main = do
   print "this should be in test/"
   -- Ignoring the changes to the flag registers, the following is what happens
 
-  let input = [0x50, 0xB8, 0x14, 0x00, 0x00, 0x00, 0x53, 0xBB, 0x1E, 0x00, 0x00, 0x00, 0x5B, 0x58]
+  let input = [0x51, 0x89, 0x1C, 0x24]
       modes = [Capstone.CsMode32]
   asm <- disasm_buf modes input
   let lifted = case asm of
@@ -31,17 +31,19 @@ main = do
   
   -- Label the statements produced by lifting from assembly. The labels are necessary for
   -- the cross referencing that happens in the next stage.
-  let labelled = snd $ labelStmts 0 lifted
+  let labelled = snd $ labelStmts 0 (Compound undefined $ lifted)
   -- Simplify the labelled statements by doing constant propagation and folding.
-  simplified <- symExec (basicX86Context modes) labelled
-  -- Elimate the dead code under the assumption that the flag bits are defined-before-use
+  simplified <- symExec (SymbolicEval.basicX86Context modes) labelled
+  -- Eliminate the dead SetRegs under the assumption that the flag bits are defined-before-use
   -- in the fragment of code that follows simplified. Wrap it in a statement.
-  let eliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadCode [(1408,1472)] (snd simplified)
+  let srEliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadSetRegs [(1408,1472)] (snd simplified)
+  -- Eliminate the dead Stores. Wrap it in a statement.
+  sEliminated <- Compound (-1) <$> maybeToList <$> snd <$> eliminateDeadStores [] srEliminated
   -- Now introduce cross references into the statements. This must be done after dead code
   -- elimination as it obscures the locations where expressions are loaded from storage.
-  referenced <- insertRefs (basicX86Context modes) eliminated
+  referenced <- insertRefs (SymbolicEval.basicX86Context modes) sEliminated
   -- Now print the result of the above transformations.
-  print $ snd referenced
+  print (absToIdStmt $ snd referenced)
   -- equality <- exprEquals (BvaddExpr (BvExpr (intToBv 2 32)) (GetReg (0,32))) (BvaddExpr (GetReg (0,32)) (BvExpr (intToBv 2 32)))
   -- print equality
   --print {-(getRegisterValues (reg_file (fst-} (symExec (basicX86Context modes) (snd $ labelStmts 0 lifted)){-)))-}
