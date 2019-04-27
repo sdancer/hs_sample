@@ -6,6 +6,7 @@ import Data.Maybe
 import SymbolicEval
 import BitVector
 import Control.Monad.State.Lazy
+import Hapstone.Internal.Capstone as Capstone
 
 -- If a statement sets a particular register, then that register is added to the
 -- defined-before-use register list. If a statement accesses a particular register,
@@ -211,6 +212,13 @@ validateWrites ranges (Store (id, pdestAbs, absVal) pdestRel pvalRel) = do
 validateWrites ranges (Compound id stmts) = mapM_ (validateWrites ranges) stmts
 
 validateWrites _ _ = return ()
+
+-- The range that spans all memory.
+
+allMemory :: [CsMode] -> [(Expr, Expr)]
+
+allMemory modes = [(BvExpr (toBv 0 archBitSize), BvExpr (toBv (-1) archBitSize))]
+              where archBitSize = get_arch_bit_size modes
 
 -- Convert absolute statements to id statements
 
