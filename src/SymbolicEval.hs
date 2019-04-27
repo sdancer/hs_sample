@@ -169,9 +169,9 @@ data SymExecutionContext = SymExecutionContext {
 
 -- Creates a context where the memory and the register file are empty.
 
-basicX86Context :: [CsMode] -> SymExecutionContext
+symExecContext :: [CsMode] -> SymExecutionContext
 
-basicX86Context modes = SymExecutionContext {
+symExecContext modes = SymExecutionContext {
   absoluteMemory = [],
   relativeMemory = [],
   absoluteRegisterFile = [],

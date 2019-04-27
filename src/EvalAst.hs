@@ -115,9 +115,9 @@ data NumExecutionContext = NumExecutionContext {
 -- Creates a context where the instruction pointer points to the first instruction, and
 -- memory and the register file are empty.
 
-basicX86Context :: [CsMode] -> NumExecutionContext
+numExecContext :: [CsMode] -> NumExecutionContext
 
-basicX86Context modes = NumExecutionContext {
+numExecContext modes = NumExecutionContext {
   memory = [],
   registerFile = updateRegisterFile emptyRegisterFile (get_insn_ptr modes) (toBv 0 (get_arch_bit_size modes)),
   procModes = modes
