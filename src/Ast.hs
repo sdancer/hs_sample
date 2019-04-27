@@ -559,9 +559,9 @@ boolToBvSVal :: SVal -> SVal
 
 boolToBvSVal e = svIte e (svInteger (KBounded False 1) 1) (svInteger (KBounded False 1) 0)
 
-bvToBool :: SVal -> SVal
+bvToBoolSVal :: SVal -> SVal
 
-bvToBool e = svIte (svEqual e (svInteger (KBounded False 1) 1)) svTrue svFalse
+bvToBoolSVal e = svIte (svEqual e (svInteger (KBounded False 1) 1)) svTrue svFalse
 
 -- Converts an Expr to an m SVal where MonadSymbolic m. This is to enable SMT solvers to
 -- prove various things about the expressions synthesized from program binaries.
@@ -606,9 +606,13 @@ exprToSVal (BvxorExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; retu
 
 exprToSVal (EqualExpr a b) = do { sva <- exprToSVal a; svb <- exprToSVal b; return $ boolToBvSVal $ svEqual sva svb; }
 
-exprToSVal (IteExpr a b c) = do { sva <- exprToSVal a; svb <- exprToSVal b; svc <- exprToSVal c; return $ svIte (bvToBool sva) svb svc; }
-
 exprToSVal (ExtractExpr a b c) = do { svc <- exprToSVal c; return $ svExtract (b-1) a svc; }
+
+exprToSVal (IteExpr a b c) = do
+  sva <- exprToSVal a
+  svb <- exprToSVal b
+  svc <- exprToSVal c
+  return $ svIte (bvToBoolSVal sva) svb svc
 
 exprToSVal (BvsgeExpr a b) = do
   sva <- exprToSVal a
@@ -693,7 +697,7 @@ exprToSVal (Load 0 _) = exprToSVal (BvExpr (bvzero 0))
 exprToSVal (Load a b) = do
   exprValAssocs <- get
   let (exprs, svals) = unzip exprValAssocs
-  results <- mapM (exprEquals (Load byte_size_bit b)) exprs
+  results <- mapM proveRelation $ map (EqualExpr (Load byte_size_bit b)) exprs
   if elem Nothing results then
     fail "Could not determine the equality of two expressions."
   else if not $ elem (Just True) results then do
@@ -736,19 +740,13 @@ exprToSVal (UndefinedExpr a) = sWordN_ a
 -- unequal for all variable assignments. Returns Nothing after I/O is SMT solver is not
 -- able to prove either.
 
-exprEquals :: MonadIO m => Expr -> Expr -> m (Maybe Bool)
+proveRelation :: MonadIO m => Expr -> m (Maybe Bool)
 
-exprEquals a b = liftIO $ do
-  -- Try to prove that expressions are equal for all variable assignments
-  thmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (do
-    sva <- exprToSVal a
-    svb <- exprToSVal b
-    return $ svEqual sva svb) []
-  -- Try to prove that expressions are unequal for all variable assignments
-  negThmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (do
-    sva <- exprToSVal a
-    svb <- exprToSVal b
-    return $ svNotEqual sva svb) []
+proveRelation a = liftIO $ do
+  -- Try to prove that relation is satisfied for all variable assignments
+  thmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (bvToBoolSVal <$> exprToSVal a) []
+  -- Try to prove that relation is not satisfied for all variable assignments
+  negThmRes <- Data.SBV.Dynamic.proveWith z3 $ evalStateT (svEqual (svInteger (KBounded False 1) 0) <$> exprToSVal a) []
   -- Poke into internals of ThmResult. Not good.
   return $ case coerce (thmRes, negThmRes) of
     (Unsatisfiable _ _, _) -> Just True

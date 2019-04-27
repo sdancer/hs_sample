@@ -19,7 +19,7 @@ main = do
   print "this should be in test/"
   -- Ignoring the changes to the flag registers, the following is what happens
 
-  let input = [0x51, 0x89, 0x1C, 0x24]
+  let input = [0x6A, 0x0A, 0x6A, 0x0A, 0x6A, 0x0A, 0x6A, 0x0A]
       modes = [Capstone.CsMode32]
   asm <- disasm_buf modes input
   let lifted = case asm of
@@ -34,6 +34,9 @@ main = do
   let labelled = snd $ labelStmts 0 (Compound undefined $ lifted)
   -- Simplify the labelled statements by doing constant propagation and folding.
   simplified <- symExec (SymbolicEval.basicX86Context modes) labelled
+  -- The program is only able to push 3 words onto the stack. No other writes allowed.
+  validateWrites [(BvsubExpr (GetReg (get_stack_reg modes)) (BvExpr (toBv 12 (get_arch_bit_size modes))),
+    GetReg (get_stack_reg modes))] (snd simplified)
   -- Eliminate the dead SetRegs under the assumption that the flag bits are defined-before-use
   -- in the fragment of code that follows simplified. Wrap it in a statement.
   let srEliminated = Compound (-1) $ maybeToList $ snd $ eliminateDeadSetRegs [(1408,1472)] (snd simplified)
