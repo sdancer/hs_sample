@@ -6,6 +6,7 @@ import Data.Maybe
 import SymbolicEval
 import BitVector
 import Control.Monad.State.Lazy
+import Hapstone.Internal.Capstone as Capstone
 
 -- If a statement sets a particular register, then that register is added to the
 -- defined-before-use register list. If a statement accesses a particular register,
@@ -57,7 +58,7 @@ removeExpr :: MonadIO m => [Expr] -> Expr -> m [Expr]
 removeExpr [] _ = return []
 
 removeExpr (c:d) e = do
-  result <- exprEquals c e
+  result <- proveRelation (EqualExpr c e)
   case result of
     Nothing -> removeExpr d e
     Just True -> removeExpr d e
@@ -72,7 +73,7 @@ isExprContained :: MonadIO m => [Expr] -> Expr -> m Bool
 isExprContained [] _ = return False
 
 isExprContained (e:es) x = do
-  result <- exprEquals e x
+  result <- proveRelation (EqualExpr e x)
   case result of
     Nothing -> isExprContained es x
     Just False -> isExprContained es x
@@ -176,6 +177,48 @@ labelStmts start (Comment id str) = (start + 1, Comment start str)
 
 labelStmts start (Compound id stmts) = (i, Compound start s)
   where (i,s) = mapAccumL labelStmts (start + 1) stmts
+
+-- Lookup the inclusive range that contains the given Expr and the n-1 bytes that follow
+-- it where n is the given integer.
+
+lookupRange :: MonadIO m => [(Expr, Expr)] -> Expr -> Int -> m (Maybe (Expr, Expr))
+
+lookupRange [] _ _ = return Nothing
+
+lookupRange ((rangeStart, rangeEnd):rst) exprStart sz = do
+  let exprEnd = BvaddExpr exprStart (BvExpr (toBv (div sz byte_size_bit) (getExprSize exprStart)))
+  -- The subtractions in the following inequalities are necessary because we are doing
+  -- modular arithmetic.
+  result <- proveRelation (BvandExpr
+    (BvuleExpr (BvsubExpr exprStart rangeStart) (BvsubExpr rangeEnd rangeStart))
+    (BvuleExpr (BvsubExpr exprEnd rangeStart) (BvsubExpr rangeEnd rangeStart)))
+  case result of
+    Just True -> return (Just (rangeStart, rangeEnd))
+    Just False -> lookupRange rst exprStart sz
+    Nothing -> lookupRange rst exprStart sz
+
+-- Ensures that the memory writes in the given statement fall within the given address
+-- ranges.
+
+validateWrites :: MonadIO m => [(Expr, Expr)] -> AbsStmt -> m ()
+
+validateWrites ranges (Store (id, pdestAbs, absVal) pdestRel pvalRel) = do
+  range <- lookupRange ranges pdestAbs (getExprSize pvalRel)
+  case range of
+    Just _ -> return ()
+    Nothing -> fail ("Unable to prove that " ++ stmt ++ " falls within writable memory.")
+                  where stmt = show (Store (id) pdestRel pvalRel :: Stmt Int () () ())
+
+validateWrites ranges (Compound id stmts) = mapM_ (validateWrites ranges) stmts
+
+validateWrites _ _ = return ()
+
+-- The range that spans all memory.
+
+allMemory :: [CsMode] -> [(Expr, Expr)]
+
+allMemory modes = [(BvExpr (toBv 0 archBitSize), BvExpr (toBv (-1) archBitSize))]
+              where archBitSize = get_arch_bit_size modes
 
 -- Convert absolute statements to id statements
 

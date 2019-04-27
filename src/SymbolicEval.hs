@@ -79,7 +79,7 @@ lookupExpr :: MonadIO m => [(Expr, Expr)] -> Expr -> m (Maybe Expr)
 lookupExpr [] addr = return Nothing
 
 lookupExpr ((a, b) : e) addr = do
-  result <- exprEquals a addr
+  result <- proveRelation (EqualExpr a addr)
   case result of
     Just False -> lookupExpr e addr
     Just True -> return $ Just b
@@ -111,7 +111,7 @@ removeExprAssoc :: MonadIO m => [(Expr, Expr)] -> Expr -> m [(Expr, Expr)]
 removeExprAssoc [] _ = return []
 
 removeExprAssoc ((c,f) : d) e = do
-  result <- exprEquals c e
+  result <- proveRelation (EqualExpr c e)
   case result of
     Nothing -> removeExprAssoc d e
     Just True -> removeExprAssoc d e
@@ -126,7 +126,7 @@ assignExpr :: MonadIO m => [(Expr, Expr)] -> (Expr, Expr) -> m [(Expr, Expr)]
 assignExpr [] (a, b) = return [(a, b)]
 
 assignExpr ((c, d) : e) (a, b) = do
-  result <- exprEquals c a
+  result <- proveRelation (EqualExpr c a)
   case result of
     Just False -> do
       rst <- assignExpr e (a, b)
@@ -169,9 +169,9 @@ data SymExecutionContext = SymExecutionContext {
 
 -- Creates a context where the memory and the register file are empty.
 
-basicX86Context :: [CsMode] -> SymExecutionContext
+symExecContext :: [CsMode] -> SymExecutionContext
 
-basicX86Context modes = SymExecutionContext {
+symExecContext modes = SymExecutionContext {
   absoluteMemory = [],
   relativeMemory = [],
   absoluteRegisterFile = [],
