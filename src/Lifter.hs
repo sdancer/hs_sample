@@ -36,21 +36,17 @@ mmp modes a = (case toEnum (fromIntegral (insnId a)) of
   X86InsTest -> test_s
   _ -> \_ _ -> Comment (fromIntegral (address a)) ("Instruction " ++ mnemonic a ++ " not supported. Ignoring opcode.")) modes a
 
-liftAsm :: [CsMode] -> [CsInsn] -> [IdStmt]
+-- Takes the processor mode and the executable code. Returns an ordered list of IdStmts
+-- such that for each instruction, there is exactly one IdStmt with the same semantics and
+-- an id equal to the address of the instruction.
 
-liftAsm modes buf = map (mmp modes) buf
+lift :: [CsMode] -> [Word8] -> IO [IdStmt]
 
-disasm_buf :: [CsMode] -> [Word8] -> IO (Either CsErr [CsInsn])
-
-disasm_buf modes buffer = disasmSimpleIO $ disasm modes buffer 0
-
-liftX86toAst :: [CsMode] -> [Word8] -> IO [IdStmt]
-
-liftX86toAst modes input = do
-  asm <- disasm_buf modes input
+lift modes input = do
+  asm <- disasmSimpleIO $ disasm modes input 0
   return (case asm of
     Left _ -> error "Error in disassembling machine code."
-    Right b -> liftAsm modes b)
+    Right csInsns -> map (mmp modes) csInsns)
 
 -- Takes the processor mode, writable address ranges, and executable code. Validates
 -- memory accesses and returns a simplified Stmt in the IR that is semantically
@@ -59,10 +55,7 @@ liftX86toAst modes input = do
 decompile :: [CsMode] -> [(Expr, Expr)] -> [Word8] -> IO IdStmt
 
 decompile modes writableMemory input = do
-  asm <- disasm_buf modes input
-  let lifted = case asm of
-                  Left _ -> error "error on disasm"
-                  Right b -> liftAsm modes b
+  lifted <- lift modes input
   -- Label the statements produced by lifting from assembly. The labels are necessary for
   -- the cross referencing that happens in the next stage.
   let labelled = snd $ labelStmts 0 (Compound undefined $ lifted)

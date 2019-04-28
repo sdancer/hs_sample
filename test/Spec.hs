@@ -45,3 +45,11 @@ testSym =
               [SetReg 35 (1472,1504) (BvExpr (19,32)),
               SetReg 36 (0,32) (BvaddExpr (ReferenceExpr 32 33) (BvExpr (20,32)))]]]]
 
+{-deadSetRegTest0 :: TestTree
+
+deadSetRegTest0 =
+  testCase "dead SetReg test 0" $ do
+    let modes = [Capstone.CsMode32]
+    let input = [0xB8, 0x0A, 0x00, 0x00, 0x00, -- mov eax, 0xa
+                0xB8, 0x14, 0x00, 0x00, 0x00 -- mov eax, 0x14-}
+
