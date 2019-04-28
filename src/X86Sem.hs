@@ -10,6 +10,21 @@ import Data.Maybe
 import Data.Word
 import BitVector
 
+getCsX86arch :: Maybe CsDetail -> Maybe CsX86
+
+getCsX86arch inst =
+  let arch = maybe Nothing archInfo inst
+  in case arch of
+    Just (X86 csx86) -> Just csx86
+    _ -> Nothing
+
+x86operands :: CsInsn -> [CsX86Op]
+
+x86operands inst =
+  let arch2 = getCsX86arch (Capstone.detail inst)
+      ops = maybe [] operands arch2
+  in ops
+
 -- Makes an expression representing the address of the next instruction
 
 next_instr_ptr :: [CsMode] -> CsInsn -> Expr
@@ -21,9 +36,9 @@ next_instr_ptr modes insn = BvExpr (toBv (insnAddr + insnLen) archBitSize)
 
 -- Make operation to increase instruction pointer by size of instruction
 
-inc_insn_ptr :: [CsMode] -> CsInsn -> IdStmt
+incInsnPtr :: [CsMode] -> CsInsn -> IdStmt
 
-inc_insn_ptr modes insn = SetReg undefined (getInsnPtr modes) (next_instr_ptr modes insn)
+incInsnPtr modes insn = SetReg undefined (getInsnPtr modes) (next_instr_ptr modes insn)
 
 -- Gets an expression for the given operand. Processor mode may be needed for computing
 -- effective addresses.
@@ -60,9 +75,9 @@ getLeaAst modes mem =
 
 -- Make operation to store the given expression in the given operand
 
-store_stmt :: [CsMode] -> CsX86Op -> Expr -> IdStmt
+storeStmt :: [CsMode] -> CsX86Op -> Expr -> IdStmt
 
-store_stmt modes operand store_what =
+storeStmt modes operand store_what =
   case (value operand) of
     (Reg reg) -> SetReg undefined (fromX86Reg reg) store_what
     (Mem mem) -> Store undefined (getLeaAst modes mem) store_what
@@ -179,9 +194,12 @@ includeIf :: Bool -> [a] -> [a]
 
 includeIf cond sublist = if cond then sublist else []
 
+-- Creates a statement in the IR with semantics equivalent to those of the given
+-- instruction when interpreted in the given mode.
+
 liftX86 :: [CsMode] -> CsInsn -> IdStmt
 
--- Make list of operations in the IR that has the same semantics as the X86 add instruction
+-- ADD instruction
 
 liftX86 modes inst | getInsnId inst == X86InsAdd =
   let (dst : src : _ ) = x86operands inst
@@ -189,8 +207,8 @@ liftX86 modes inst | getInsnId inst == X86InsAdd =
       src_ast = getOperandAst modes src
       add_node = (BvaddExpr dst_ast src_ast)
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
-      store_stmt modes dst add_node,
+      incInsnPtr modes inst,
+      storeStmt modes dst add_node,
       af_s add_node dst dst_ast src_ast,
       pf_s add_node dst,
       sf_s add_node dst,
@@ -198,7 +216,7 @@ liftX86 modes inst | getInsnId inst == X86InsAdd =
       cf_add_s add_node dst dst_ast src_ast,
       of_add_s add_node dst dst_ast src_ast]
 
--- Make list of operations in the IR that has the same semantics as the X86 inc instruction
+-- INC instruction
 
 liftX86 modes inst | getInsnId inst == X86InsInc =
   let (dst : _ ) = x86operands inst
@@ -206,15 +224,15 @@ liftX86 modes inst | getInsnId inst == X86InsInc =
       src_ast = BvExpr (toBv 1 (fromIntegral (size dst * byte_size_bit)))
       add_node = (BvaddExpr dst_ast src_ast)
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
-      store_stmt modes dst add_node,
+      incInsnPtr modes inst,
+      storeStmt modes dst add_node,
       af_s add_node dst dst_ast src_ast,
       pf_s add_node dst,
       sf_s add_node dst,
       zf_s add_node dst,
       of_add_s add_node dst dst_ast src_ast]
 
--- Make list of operations in the IR that has the same semantics as the X86 sub instruction
+-- SUB instruction
 
 liftX86 modes inst | getInsnId inst == X86InsSub =
   let (dst : src : _ ) = x86operands inst
@@ -222,8 +240,8 @@ liftX86 modes inst | getInsnId inst == X86InsSub =
       src_ast = getOperandAst modes src
       sub_node = (BvsubExpr dst_ast src_ast)
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
-      store_stmt modes dst sub_node,
+      incInsnPtr modes inst,
+      storeStmt modes dst sub_node,
       af_s sub_node dst dst_ast src_ast,
       pf_s sub_node dst,
       sf_s sub_node dst,
@@ -231,7 +249,7 @@ liftX86 modes inst | getInsnId inst == X86InsSub =
       cf_sub_s sub_node dst dst_ast src_ast,
       of_sub_s sub_node dst dst_ast src_ast]
 
--- Make list of operations in the IR that has the same semantics as the X86 cmp instruction
+-- CMP instruction
 
 liftX86 modes inst | getInsnId inst == X86InsCmp =
   let (dst : src : _ ) = x86operands inst
@@ -239,7 +257,7 @@ liftX86 modes inst | getInsnId inst == X86InsCmp =
       src_ast = SxExpr (fromIntegral (size dst) * byte_size_bit) (getOperandAst modes src)
       cmp_node = BvsubExpr dst_ast src_ast
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
+      incInsnPtr modes inst,
       af_s cmp_node dst dst_ast src_ast,
       pf_s cmp_node dst,
       sf_s cmp_node dst,
@@ -247,7 +265,7 @@ liftX86 modes inst | getInsnId inst == X86InsCmp =
       cf_sub_s cmp_node dst dst_ast src_ast,
       of_sub_s cmp_node dst dst_ast src_ast]
 
--- Make list of operations in the IR that has the same semantics as the X86 xor instruction
+-- XOR instruction
 
 liftX86 modes inst | getInsnId inst == X86InsXor =
   let (dst_op : src_op : _ ) = x86operands inst
@@ -255,8 +273,8 @@ liftX86 modes inst | getInsnId inst == X86InsXor =
       src_ast = getOperandAst modes src_op
       xor_node = (BvxorExpr dst_ast src_ast)
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
-      store_stmt modes dst_op xor_node,
+      incInsnPtr modes inst,
+      storeStmt modes dst_op xor_node,
       SetReg undefined (fromX86Flag X86FlagAf) (UndefinedExpr 1),
       pf_s xor_node dst_op,
       sf_s xor_node dst_op,
@@ -264,7 +282,7 @@ liftX86 modes inst | getInsnId inst == X86InsXor =
       SetReg undefined (fromX86Flag X86FlagCf) (BvExpr (toBv 0 1)),
       SetReg undefined (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))]
 
--- Make list of operations in the IR that has the same semantics as the X86 and instruction
+-- AND instruction
 
 liftX86 modes inst | getInsnId inst == X86InsAnd =
   let (dst_op : src_op : _ ) = x86operands inst
@@ -272,8 +290,8 @@ liftX86 modes inst | getInsnId inst == X86InsAnd =
       src_ast = getOperandAst modes src_op
       and_node = (BvandExpr dst_ast src_ast)
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
-      store_stmt modes dst_op and_node,
+      incInsnPtr modes inst,
+      storeStmt modes dst_op and_node,
       SetReg undefined (fromX86Flag X86FlagAf) (UndefinedExpr 1),
       pf_s and_node dst_op,
       sf_s and_node dst_op,
@@ -281,7 +299,7 @@ liftX86 modes inst | getInsnId inst == X86InsAnd =
       SetReg undefined (fromX86Flag X86FlagCf) (BvExpr (toBv 0 1)),
       SetReg undefined (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))]
 
--- Make list of operations in the IR that has the same semantics as the X86 test instruction
+-- TEST instruction
 
 liftX86 modes inst | getInsnId inst == X86InsTest =
   let (dst_op : src_op : _ ) = x86operands inst
@@ -289,7 +307,7 @@ liftX86 modes inst | getInsnId inst == X86InsTest =
       src_ast = getOperandAst modes src_op
       test_node = (BvandExpr dst_ast src_ast)
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
+      incInsnPtr modes inst,
       SetReg undefined (fromX86Flag X86FlagAf) (UndefinedExpr 1),
       pf_s test_node dst_op,
       sf_s test_node dst_op,
@@ -297,7 +315,7 @@ liftX86 modes inst | getInsnId inst == X86InsTest =
       SetReg undefined (fromX86Flag X86FlagCf) (BvExpr (toBv 0 1)),
       SetReg undefined (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))]
 
--- Make list of operations in the IR that has the same semantics as the X86 or instruction
+-- OR instruction
 
 liftX86 modes inst | getInsnId inst == X86InsOr =
   let (dst_op : src_op : _ ) = x86operands inst
@@ -305,8 +323,8 @@ liftX86 modes inst | getInsnId inst == X86InsOr =
       src_ast = getOperandAst modes src_op
       and_node = (BvorExpr dst_ast src_ast)
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
-      store_stmt modes dst_op and_node,
+      incInsnPtr modes inst,
+      storeStmt modes dst_op and_node,
       SetReg undefined (fromX86Flag X86FlagAf) (UndefinedExpr 1),
       pf_s and_node dst_op,
       sf_s and_node dst_op,
@@ -314,7 +332,7 @@ liftX86 modes inst | getInsnId inst == X86InsOr =
       SetReg undefined (fromX86Flag X86FlagCf) (BvExpr (toBv 0 1)),
       SetReg undefined (fromX86Flag X86FlagOf) (BvExpr (toBv 0 1))]
 
--- Make list of operations in the IR that has the same semantics as the X86 push instruction
+-- PUSH instruction
 
 liftX86 modes inst | getInsnId inst == X86InsPush =
   let (src : _) = x86operands inst
@@ -325,11 +343,11 @@ liftX86 modes inst | getInsnId inst == X86InsPush =
         (Imm _) -> arch_byte_size
         _ -> fromIntegral $ size src
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
+      incInsnPtr modes inst,
       SetReg undefined sp (BvsubExpr (GetReg sp) (BvExpr (toBv op_size (arch_byte_size * byte_size_bit)))),
       Store undefined (GetReg sp) (ZxExpr (op_size * byte_size_bit) (getOperandAst modes src))]
 
--- Make list of operations in the IR that has the same semantics as the X86 pop instruction
+-- POP instruction
 
 liftX86 modes inst | getInsnId inst == X86InsPop =
   let (dst : _) = x86operands inst
@@ -347,14 +365,14 @@ liftX86 modes inst | getInsnId inst == X86InsPop =
       -- An expression of the amount the stack pointer will be increased by
       delta_val = BvExpr (toBv op_size arch_bit_size)
   in Compound (fromIntegral (address inst))
-      ([inc_insn_ptr modes inst]
+      ([incInsnPtr modes inst]
       ++ (includeIf sp_base [SetReg undefined sp (BvaddExpr (GetReg sp) delta_val)])
-      ++ [store_stmt modes dst
+      ++ [storeStmt modes dst
           (Load (op_size * byte_size_bit)
             (if sp_base then (BvsubExpr (GetReg sp) delta_val) else (GetReg sp)))]
       ++ (includeIf (not (sp_base || sp_reg)) [SetReg undefined sp (BvaddExpr (GetReg sp) delta_val)]))
 
--- Make list of operations in the IR that has the same semantics as the X86 mov instruction
+-- MOV instruction
 
 liftX86 modes inst | getInsnId inst == X86InsMov =
   let (dst_op : src_op : _ ) = x86operands inst
@@ -376,8 +394,8 @@ liftX86 modes inst | getInsnId inst == X86InsMov =
           (Reg reg) | isControlReg reg -> True
           _ -> False
   in Compound (fromIntegral (address inst))
-      ([inc_insn_ptr modes inst,
-      store_stmt modes dst_op node]
+      ([incInsnPtr modes inst,
+      storeStmt modes dst_op node]
       ++ includeIf undef
           [SetReg undefined (fromX86Flag X86FlagAf) (UndefinedExpr 1),
           SetReg undefined (fromX86Flag X86FlagPf) (UndefinedExpr 1),
@@ -386,7 +404,7 @@ liftX86 modes inst | getInsnId inst == X86InsMov =
           SetReg undefined (fromX86Flag X86FlagCf) (UndefinedExpr 1),
           SetReg undefined (fromX86Flag X86FlagOf) (UndefinedExpr 1)])
 
--- Make list of operations in the IR that has the same semantics as the X86 movzx instruction
+-- MOVZX instruction
 
 liftX86 modes inst | getInsnId inst == X86InsMovzx =
   let (dst_op : src_op : _ ) = x86operands inst
@@ -395,17 +413,17 @@ liftX86 modes inst | getInsnId inst == X86InsMovzx =
       dst_size_bit = (fromIntegral $ size dst_op) * byte_size_bit
       zx_node = ZxExpr dst_size_bit src_ast
   in Compound (fromIntegral (address inst))
-      [inc_insn_ptr modes inst,
-      store_stmt modes dst_op zx_node]
+      [incInsnPtr modes inst,
+      storeStmt modes dst_op zx_node]
 
--- Make a list of operations in the IR that has the same semantics as the X86 jmp instruction
+-- JMP instruction
 
 liftX86 modes inst | getInsnId inst == X86InsJmp =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst modes src_op
   in Compound (fromIntegral (address inst)) [SetReg undefined (getInsnPtr modes) src_ast]
 
--- Make a list of operations in the IR that has the same semantics as the X86 je instruction
+-- JE instruction
 
 liftX86 modes inst | getInsnId inst == X86InsJe =
   let (src_op : _ ) = x86operands inst
@@ -417,7 +435,7 @@ liftX86 modes inst | getInsnId inst == X86InsJe =
           src_ast
           (next_instr_ptr modes inst))]
 
--- Make a list of operations in the IR that has the same semantics as the X86 jne instruction
+-- JNE instruction
 
 liftX86 modes inst | getInsnId inst == X86InsJne =
   let (src_op : _ ) = x86operands inst
@@ -429,7 +447,7 @@ liftX86 modes inst | getInsnId inst == X86InsJne =
           src_ast
           (next_instr_ptr modes inst))]
 
--- Make a list of operations in the IR that has the same semantics as the X86 call instruction
+-- CALL instruction
 
 liftX86 modes inst | getInsnId inst == X86InsCall =
   let (src_op : _ ) = x86operands inst
@@ -442,7 +460,7 @@ liftX86 modes inst | getInsnId inst == X86InsCall =
       Store undefined (GetReg sp) (next_instr_ptr modes inst),
       SetReg undefined (getInsnPtr modes) (ZxExpr arch_bit_size src_ast)]
 
--- Make a list of operations in the IR that has the same semantics as the X86 ret instruction
+-- RET instruction
 
 liftX86 modes inst | getInsnId inst == X86InsRet =
   let operands = x86operands inst
@@ -456,7 +474,7 @@ liftX86 modes inst | getInsnId inst == X86InsRet =
           (let src_ast = getOperandAst modes (head operands)
           in [SetReg undefined sp (BvaddExpr (GetReg sp) (ZxExpr (arch_byte_size * byte_size_bit) src_ast))]))
 
--- Make list of operations in the IR that has the same semantics as the X86 lea instruction
+-- LEA instruction
 
 liftX86 modes inst | getInsnId inst == X86InsLea =
   let (dst_op : src_op : _ ) = x86operands inst
@@ -464,7 +482,7 @@ liftX86 modes inst | getInsnId inst == X86InsLea =
       dst_size = fromIntegral (size dst_op * byte_size_bit)
       src_ea_size = getArchBitSize modes
   in Compound (fromIntegral (address inst)) [
-      inc_insn_ptr modes inst,
+      incInsnPtr modes inst,
       case value src_op of
         Imm value ->
           Comment undefined ("Memory operand expected in " ++ show inst ++ ", but immediate value found instead. Ignoring opcode.")
@@ -478,28 +496,13 @@ liftX86 modes inst | getInsnId inst == X86InsLea =
                 else if dst_size < src_ea_size then
                   ExtractExpr 0 dst_size src_ea
                 else src_ea
-          in store_stmt modes dst_op src_ea_fitted]
+          in storeStmt modes dst_op src_ea_fitted]
 
 -- Otherwise put in a comment to the effect that the instruction is not supported
 
 liftX86 modes inst =
   Compound (fromIntegral (address inst)) [
     -- Increase the instruction pointer so that exec does not hang here
-    inc_insn_ptr modes inst,
+    incInsnPtr modes inst,
     Comment undefined ("Instruction " ++ mnemonic inst ++ " not supported. Ignoring opcode.")]
-
-getCsX86arch :: Maybe CsDetail -> Maybe CsX86
-
-getCsX86arch inst =
-  let arch = maybe Nothing archInfo inst
-  in case arch of
-    Just (X86 csx86) -> Just csx86
-    _ -> Nothing
-
-x86operands :: CsInsn -> [CsX86Op]
-
-x86operands inst =
-  let arch2 = getCsX86arch (Capstone.detail inst)
-      ops = maybe [] operands arch2
-  in ops
 
