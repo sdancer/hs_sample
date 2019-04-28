@@ -19,16 +19,16 @@ updateDefinedRegisters regs (Comment _ _) = regs
 updateDefinedRegisters regs (SetReg _ reg expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
-        Load a b -> foldl removeAccessedReg rs (flatten b)
+        Load a b -> foldl removeAccessedReg rs (flattenExpr b)
         _ -> rs
-  in foldl removeAccessedReg (addRegister regs reg) (flatten expr)
+  in foldl removeAccessedReg (addRegister regs reg) (flattenExpr expr)
 
 updateDefinedRegisters regs (Store _ _ expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
-        Load a b -> foldl removeAccessedReg rs (flatten b)
+        Load a b -> foldl removeAccessedReg rs (flattenExpr b)
         _ -> rs
-  in foldl removeAccessedReg regs (flatten expr)
+  in foldl removeAccessedReg regs (flattenExpr expr)
 
 updateDefinedRegisters regs (Compound _ stmts) =
   foldl updateDefinedRegisters regs stmts
@@ -91,17 +91,17 @@ updateDefinedAddresses addrs (SetReg (id, valAbs) _ _) =
   let removeAccessedAddr as e = case e of
         Load a b -> do
           rmed <- removeExpr as b
-          foldM removeAccessedAddr rmed (flatten b)
+          foldM removeAccessedAddr rmed (flattenExpr b)
         _ -> return as
-  in foldM removeAccessedAddr addrs (flatten valAbs)
+  in foldM removeAccessedAddr addrs (flattenExpr valAbs)
 
 updateDefinedAddresses addrs (Store (id, destAbs, valAbs) _ _) =
   let removeAccessedAddr as e = case e of
         Load a b -> do
           rmed <- removeExpr as b
-          foldM removeAccessedAddr as (flatten b)
+          foldM removeAccessedAddr as (flattenExpr b)
         _ -> return as
-  in foldM removeAccessedAddr (destAbs:addrs) (flatten valAbs)
+  in foldM removeAccessedAddr (destAbs:addrs) (flattenExpr valAbs)
 
 updateDefinedAddresses addrs (Compound _ stmts) =
   foldM updateDefinedAddresses addrs stmts

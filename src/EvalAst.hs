@@ -212,34 +212,31 @@ exec cin (Comment _ _) = cin
 
 -- Lookup the statement with the given id
 
-lookupStmt :: [IdStmt] -> Int -> IdStmt
+lookupStmt :: [IdStmt] -> Int -> Maybe IdStmt
 
-lookupStmt (SetReg v bs a : stmts) id | v == id = SetReg v bs a
+lookupStmt [] _ = Nothing
 
-lookupStmt (Store v bs a : stmts) id | v == id = Store v bs a
+lookupStmt (SetReg v bs a : stmts) id | v == id = Just $ SetReg v bs a
 
-lookupStmt (Compound v a : stmts) id | v == id = Compound v a
+lookupStmt (Store v bs a : stmts) id | v == id = Just $ Store v bs a
 
-lookupStmt (Comment v a : stmts) id | v == id = Comment v a
+lookupStmt (Compound v a : stmts) id | v == id = Just $ Compound v a
+
+lookupStmt (Comment v a : stmts) id | v == id = Just $ Comment v a
 
 lookupStmt (stmt : stmts) id = lookupStmt stmts id
 
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
 
-fetchExec :: [IdStmt] -> NumExecutionContext -> NumExecutionContext
+fetchExec :: NumExecutionContext -> [IdStmt] -> NumExecutionContext
 
-fetchExec stmts cin =
+fetchExec cin stmts =
   let procInsnPtr = getInsnPtr (procModes cin)
   in case getRegisterValue (registerFile cin) procInsnPtr of
     Nothing -> error "Instruction pointer has not yet been set."
-    Just registerValue -> exec cin (lookupStmt stmts (fromBvU registerValue))
-
--- Applies the given function on the given argument a given number of times
-
-iter :: (a -> a) -> Int -> a -> a
-
-iter fun 0 x = x
-
-iter fun n x = iter fun (n - 1) (fun x)
+    Just registerValue ->
+      case lookupStmt stmts (fromBvU registerValue) of
+        Nothing -> cin
+        Just stmt -> fetchExec (exec cin stmt) stmts
 

@@ -400,79 +400,92 @@ getExprSize (Load a b) = a
 
 getExprSize (GetReg a) = getRegisterSize a
 
+-- Creates a post-ordered list of statements from the given statement. Sometimes the
+-- hierarchy is a hindrance in computations.
+
+flattenStmt :: Stmt a b c d -> [Stmt a b c d]
+
+flattenStmt (Store a b c) = [Store a b c]
+
+flattenStmt (SetReg a b c) = [SetReg a b c]
+
+flattenStmt (Compound a b) = (concat $ map flattenStmt b) ++ [Compound a b]
+
+flattenStmt (Comment a b) = [Comment a b]
+
 -- Creates a post-ordered list of expressions from the given expression. Sometimes the
 -- hierarchy is a hindrance in computations.
 
-flatten :: Expr -> [Expr]
+flattenExpr :: Expr -> [Expr]
 
-flatten (BvExpr bv) = [(BvExpr bv)]
+flattenExpr (BvExpr bv) = [(BvExpr bv)]
 
-flatten (BvmulExpr a b) = flatten a ++ flatten b ++ [BvmulExpr a b]
+flattenExpr (BvmulExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvmulExpr a b]
 
-flatten (BvudivExpr a b) = flatten a ++ flatten b ++ [BvudivExpr a b]
+flattenExpr (BvudivExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvudivExpr a b]
 
-flatten (BvsdivExpr a b) = flatten a ++ flatten b ++ [BvsdivExpr a b]
+flattenExpr (BvsdivExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsdivExpr a b]
 
-flatten (BvugtExpr a b) = flatten a ++ flatten b ++ [BvugtExpr a b]
+flattenExpr (BvugtExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvugtExpr a b]
 
-flatten (BvultExpr a b) = flatten a ++ flatten b ++ [BvultExpr a b]
+flattenExpr (BvultExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvultExpr a b]
 
-flatten (BvugeExpr a b) = flatten a ++ flatten b ++ [BvugeExpr a b]
+flattenExpr (BvugeExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvugeExpr a b]
 
-flatten (BvuleExpr a b) = flatten a ++ flatten b ++ [BvuleExpr a b]
+flattenExpr (BvuleExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvuleExpr a b]
 
-flatten (BvsgtExpr a b) = flatten a ++ flatten b ++ [BvsgtExpr a b]
+flattenExpr (BvsgtExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsgtExpr a b]
 
-flatten (BvsltExpr a b) = flatten a ++ flatten b ++ [BvsltExpr a b]
+flattenExpr (BvsltExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsltExpr a b]
 
-flatten (BvsgeExpr a b) = flatten a ++ flatten b ++ [BvsgeExpr a b]
+flattenExpr (BvsgeExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsgeExpr a b]
 
-flatten (BvsleExpr a b) = flatten a ++ flatten b ++ [BvsleExpr a b]
+flattenExpr (BvsleExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsleExpr a b]
 
-flatten (BvaddExpr a b) = flatten a ++ flatten b ++ [BvaddExpr a b]
+flattenExpr (BvaddExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvaddExpr a b]
 
-flatten (BvandExpr a b) = flatten a ++ flatten b ++ [BvandExpr a b]
+flattenExpr (BvandExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvandExpr a b]
 
-flatten (BvashrExpr a b) = flatten a ++ flatten b ++ [BvashrExpr a b]
+flattenExpr (BvashrExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvashrExpr a b]
 
-flatten (BvlshrExpr a b) = flatten a ++ flatten b ++ [BvlshrExpr a b]
+flattenExpr (BvlshrExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvlshrExpr a b]
 
-flatten (BvnegExpr a) = flatten a ++ [BvnegExpr a]
+flattenExpr (BvnegExpr a) = flattenExpr a ++ [BvnegExpr a]
 
-flatten (BvnotExpr a) = flatten a ++ [BvnotExpr a]
+flattenExpr (BvnotExpr a) = flattenExpr a ++ [BvnotExpr a]
 
-flatten (BvorExpr a b) = flatten a ++ flatten b ++ [BvorExpr a b]
+flattenExpr (BvorExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvorExpr a b]
 
-flatten (BvrolExpr a b) = flatten a ++ flatten b ++ [BvrolExpr a b]
+flattenExpr (BvrolExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvrolExpr a b]
 
-flatten (BvrorExpr a b) = flatten a ++ flatten b ++ [BvrorExpr a b]
+flattenExpr (BvrorExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvrorExpr a b]
 
-flatten (BvsubExpr a b) = flatten a ++ flatten b ++ [BvsubExpr a b]
+flattenExpr (BvsubExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsubExpr a b]
 
-flatten (BvxorExpr a b) = flatten a ++ flatten b ++ [BvxorExpr a b]
+flattenExpr (BvxorExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvxorExpr a b]
 
-flatten (ConcatExpr a) = foldl (++) [] (map flatten a) ++ [ConcatExpr a]
+flattenExpr (ConcatExpr a) = foldl (++) [] (map flattenExpr a) ++ [ConcatExpr a]
 
-flatten (EqualExpr a b) = flatten a ++ flatten b ++ [EqualExpr a b]
+flattenExpr (EqualExpr a b) = flattenExpr a ++ flattenExpr b ++ [EqualExpr a b]
 
-flatten (ExtractExpr l h e) = flatten e ++ [ExtractExpr l h e]
+flattenExpr (ExtractExpr l h e) = flattenExpr e ++ [ExtractExpr l h e]
 
-flatten (ReplaceExpr l a b) = flatten a ++ flatten b ++ [ReplaceExpr l a b]
+flattenExpr (ReplaceExpr l a b) = flattenExpr a ++ flattenExpr b ++ [ReplaceExpr l a b]
 
-flatten (IteExpr a b c) = flatten a ++ flatten b ++ flatten c ++ [IteExpr a b c]
+flattenExpr (IteExpr a b c) = flattenExpr a ++ flattenExpr b ++ flattenExpr c ++ [IteExpr a b c]
 
-flatten (ReferenceExpr a b) = [ReferenceExpr a b]
+flattenExpr (ReferenceExpr a b) = [ReferenceExpr a b]
 
-flatten (SxExpr a b) = flatten b ++ [SxExpr a b]
+flattenExpr (SxExpr a b) = flattenExpr b ++ [SxExpr a b]
 
-flatten (ZxExpr a b) = flatten b ++ [ZxExpr a b]
+flattenExpr (ZxExpr a b) = flattenExpr b ++ [ZxExpr a b]
 
-flatten (UndefinedExpr a) = [UndefinedExpr a]
+flattenExpr (UndefinedExpr a) = [UndefinedExpr a]
 -- Does not recur into b. This is in order to be consistent with mapMExpr and exprToSVal
 -- which also do not recur into b.
-flatten (Load a b) = [Load a b]
+flattenExpr (Load a b) = [Load a b]
 
-flatten (GetReg a) = [GetReg a]
+flattenExpr (GetReg a) = [GetReg a]
 
 -- Going through the expression tree in post-order, monadically map expressions to other
 -- expressions using the given function.
