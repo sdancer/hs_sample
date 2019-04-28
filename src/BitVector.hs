@@ -8,19 +8,19 @@ import Numeric.Natural
 -- Second item of tuple is bit-vector size in bits. The bit-vector must have length equal
 -- to ceil(size/digitBitSize).
 
-type BitVector = (Integer, Int)
+newtype BitVector = Bv (Integer, Int) deriving Show
 
 bvlength :: BitVector -> Int
 
-bvlength (av,an) = an
+bvlength (Bv (av, an)) = an
 
 bvtrue :: BitVector
 
-bvtrue = (1,1)
+bvtrue = Bv (1, 1)
 
 bvfalse :: BitVector
 
-bvfalse = (0,1)
+bvfalse = Bv (0, 1)
 
 boolToBv :: Bool -> BitVector
 
@@ -30,95 +30,65 @@ boolToBv False = bvfalse
 
 empty :: BitVector
 
-empty = (0, 0)
+empty = Bv (0, 0)
 
 bvzero :: Int -> BitVector
 
-bvzero a = (0,a)
+bvzero a = Bv (0, a)
 
 bvone :: Int -> BitVector
 
-bvone a = (1,a)
+bvone a = Bv (1, a)
 
 bvxor :: BitVector -> BitVector -> BitVector
 
-bvxor (av,an) (bv,bn) | an == bn = (xor av bv, an)
+bvxor (Bv (av,an)) (Bv (bv,bn)) | an == bn = Bv (xor av bv, an)
 
 bvxor _ _ = error "Bit-vector arguments to BvxorExpr have different bit-lengths."
 
 bvand :: BitVector -> BitVector -> BitVector
 
-bvand (av,an) (bv,bn) | an == bn = (av .&. bv, an)
+bvand (Bv (av,an)) (Bv (bv,bn)) | an == bn = Bv (av .&. bv, an)
 
 bvand _ _ = error "Bit-vector arguments to BvandExpr have different bit-lengths."
 
 bvor :: BitVector -> BitVector -> BitVector
 
-bvor (av,an) (bv,bn) | an == bn = (av .|. bv, an)
+bvor (Bv (av,an)) (Bv (bv,bn)) | an == bn = Bv (av .|. bv, an)
 
 bvor _ _ = error "Bit-vector arguments to BvorExpr have different bit-lengths."
 
 bvnot :: BitVector -> BitVector
 
-bvnot (av,an) = (complement av, an)
+bvnot (Bv (av,an)) = Bv (complement av, an)
 
 -- Zero extends the given bit-vector to the given amount
 
 zx :: Int -> BitVector -> BitVector
 
-zx a b = (fromBvU b, a)
+zx a b = Bv (fromBvU b, a)
 
 -- Gets the given bit of the bit-vector
 
 bvbit :: BitVector -> Int -> Bool
 
-bvbit (bv,bn) idx = testBit bv idx
+bvbit (Bv (bv, bn)) idx = testBit bv idx
 
 -- Sign extends the given bit-vector to the given amount
 
 sx :: Int -> BitVector -> BitVector
 
-sx a b = (fromBvS b, a)
-
--- Compares two bit-vectors by zero-extending both and element-wise checking word equality
-
-bvequal :: BitVector -> BitVector -> Bool
-
-bvequal a b | bvlength a == bvlength b = fromBvU a == fromBvU b
-
-bvequal _ _ = error "Bit-vector arguments to EqualExpr have different bit-lengths."
-
-bvadd :: BitVector -> BitVector -> BitVector
-
-bvadd (av,an) (bv,bn) | an == bn = (av+bv, an)
-
-bvadd _ _ = error "Bit-vector arguments to BvaddExpr have different bit-lengths."
-
-bvnegate :: BitVector -> BitVector
-
-bvnegate (av,an) = (-av, an)
-
-bvsub :: BitVector -> BitVector -> BitVector
-
-bvsub (av,an) (bv,bn) | an == bn = (av-bv, an)
-
-bvsub _ _ = error "Bit-vector arguments to BvsubExpr have different bit-lengths."
-
-bvmul :: BitVector -> BitVector -> BitVector
-
-bvmul (av,an) (bv,bn) | an == bn = (av*bv,an)
-
-bvmul _ _ = error "Bit-vector arguments to BvmulExpr have different bit-lengths."
+sx a b = Bv (fromBvS b, a)
 
 bvudiv :: BitVector -> BitVector -> BitVector
 
-bvudiv a b | bvlength a == bvlength b = (div (fromBvU a) (fromBvU b), bvlength a)
+bvudiv a b | bvlength a == bvlength b = Bv (div (fromBvU a) (fromBvU b), bvlength a)
 
 bvudiv _ _ = error "Bit-vector arguments to BvudivExpr have different bit-lengths."
 
 bvsdiv :: BitVector -> BitVector -> BitVector
 
-bvsdiv a b | bvlength a == bvlength b = (div (fromBvS a) (fromBvS b), bvlength a)
+bvsdiv a b | bvlength a == bvlength b = Bv (div (fromBvS a) (fromBvS b), bvlength a)
 
 bvsdiv _ _ = error "Bit-vector arguments to BvsdivExpr have different bit-lengths."
 
@@ -172,24 +142,24 @@ ite a b c = if fromBvU a == 1 then b else c
 
 bvlshr :: BitVector -> BitVector -> BitVector
 
-bvlshr a b = (shiftR (fromBvU a) (fromBvU b), bvlength a)
+bvlshr a b = Bv (shiftR (fromBvU a) (fromBvU b), bvlength a)
 
 bvashr :: BitVector -> BitVector -> BitVector
 
-bvashr a b = (shiftR (fromBvS a) (fromBvU b), bvlength a)
+bvashr a b = Bv (shiftR (fromBvS a) (fromBvU b), bvlength a)
 
 bvshl :: BitVector -> BitVector -> BitVector
 
-bvshl a b = (shiftL (fromBvU a) (fromBvU b), bvlength a)
+bvshl a b = Bv (shiftL (fromBvU a) (fromBvU b), bvlength a)
 
 bvconcat :: BitVector -> BitVector -> BitVector
 
-bvconcat a b = bvor (bvshl (zx newlength a) (toInteger $ bvlength b, newlength)) (zx newlength b)
+bvconcat a b = bvor (bvshl (zx newlength a) (Bv (toInteger $ bvlength b, newlength))) (zx newlength b)
   where newlength = bvlength a + bvlength b
 
 bvextract :: Int -> Int -> BitVector -> BitVector
 
-bvextract l h a = zx (h - l) (bvlshr a (toInteger l, bvlength a))
+bvextract l h a = zx (h - l) (bvlshr a (Bv (toInteger l, bvlength a)))
 
 bvreplace :: BitVector -> Int -> BitVector -> BitVector
 
@@ -197,13 +167,37 @@ bvreplace a b c = bvconcat (bvextract (b + bvlength c) (bvlength a) a) (bvconcat
 
 fromBvU :: Num a => BitVector -> a
 
-fromBvU (av,an) = fromInteger ((bit an - 1) .&. av)
+fromBvU (Bv (av,an)) = fromInteger ((bit an - 1) .&. av)
 
 fromBvS :: Num a => BitVector -> a
 
-fromBvS (av,an) = fromInteger (if testBit av (an-1) then (-(bit an)) .|. av else (bit an - 1) .&. av)
+fromBvS (Bv (av,an)) = fromInteger (if testBit av (an-1) then (-(bit an)) .|. av else (bit an - 1) .&. av)
 
 toBv :: Integral a => a -> Int -> BitVector
 
-toBv a b = (toInteger a, b)
+toBv a b = Bv (toInteger a, b)
+
+-- The following instances are required to enable pattern matching on bit-vectors
+
+instance Num BitVector where
+  Bv (av,an) + Bv (bv,bn) | an == bn = Bv (av+bv, an)
+  _ + _ = error "Bit-vector arguments to BvaddExpr have different bit-lengths."
+  Bv (av,an) - Bv (bv,bn) | an == bn = Bv (av-bv, an)
+  _ - _ = error "Bit-vector arguments to BvsubExpr have different bit-lengths."
+  Bv (av,an) * Bv (bv,bn) | an == bn = Bv (av*bv,an)
+  _ * _ = error "Bit-vector arguments to BvmulExpr have different bit-lengths."
+  negate (Bv (av, an)) = Bv (-av, an)
+  abs (Bv (av, an)) = Bv (abs av, an)
+  signum (Bv (av, an)) = Bv (signum av, an)
+  -- A hack to enable pattern matching on BitVectors: -1 stands for variable length
+  fromInteger x = Bv (x, -1)
+
+instance Eq BitVector where
+  -- Comparing a fixed length bit-vector to a variable length bit-vector
+  a == Bv (b,-1) = Bv (b,-1) == a
+  Bv (a,-1) == b = Bv (a, bvlength b) == b
+  -- Comparing two bit-vectors that are fixed to the same length
+  a == b | bvlength a == bvlength b = fromBvU a == fromBvU b
+  -- Otherwise the two bit-vectors cannot be compared
+  _ == _ = error "Bit-vector arguments to EqualExpr have different bit-lengths."
 

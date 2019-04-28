@@ -9,6 +9,9 @@ import Hapstone.Internal.Capstone as Capstone
 import Phasses
 import EvalAst
 import Hapstone.Internal.X86 as X86
+import BitVector
+import Control.Exception
+import Data.Functor
 
 main :: IO ()
 main = defaultMain $
@@ -17,8 +20,37 @@ main = defaultMain $
     , testSym
     , deadSetRegTest0
     , deadSetRegTest1
+    , deadSetRegTest2
+    , deadSetRegTest3
+    , deadStoreTest0
+    , deadStoreTest1
     --, testBlockOne
   ]
+
+-- A Pattern is a predicate that returns True for values matching the Pattern, and False
+-- otherwise. A Pattern is treated as if it returned False in the case that applying it
+-- yields a PatternMatchFail.
+
+type Pattern a = a -> Bool
+
+-- Count the number of items in the given list that match the given pattern
+
+countPattern :: [a] -> Pattern a -> IO Int
+
+countPattern [] _ = return 0
+
+countPattern (x:xs) pat = catch
+  (do
+    a <- evaluate $ pat x
+    b <- countPattern xs pat
+    return ((fromEnum a) + b))
+  (\e -> let _ = (e :: PatternMatchFail) in countPattern xs pat)
+
+-- Count the number of items in the given statement that match the given pattern
+
+countStmtPattern :: Stmt a b c d -> Pattern (Stmt a b c d) -> IO Int
+
+countStmtPattern stmt pat = countPattern (flattenStmt stmt) pat
 
 testLift :: TestTree
 
@@ -29,8 +61,8 @@ testLift =
                  0xB8, 0x02, 0x00, 0x00, 0x00] -- mov eax, 0x2
     l <- decompile modes (allMemory modes) input
     l @?= Compound (-1) [Compound (-1) [Compound 0 [Compound 1 [], Compound 4
-            [SetReg 5 (1472,1504) (BvExpr (10,32)),
-            SetReg 6 (0,32) (BvExpr (2,32))]]]]
+            [SetReg 5 (1472,1504) (BvExpr (Bv(10,32))),
+            SetReg 6 (0,32) (BvExpr (Bv(2,32)))]]]]
 
 testSym :: TestTree
 
@@ -46,8 +78,8 @@ testSym =
     l <- decompile modes (allMemory modes) input
     l @?= Compound (-1) [Compound (-1) [Compound 0 [Compound 1 [],Compound 4 [], Compound 13 [],
             Compound 22 [],Compound 31 [SetReg 33 (0,32) (GetReg (64,96))], Compound 34
-              [SetReg 35 (1472,1504) (BvExpr (19,32)),
-              SetReg 36 (0,32) (BvaddExpr (ReferenceExpr 32 33) (BvExpr (20,32)))]]]]
+              [SetReg 35 (1472,1504) (BvExpr (Bv(19,32))),
+              SetReg 36 (0,32) (BvaddExpr (ReferenceExpr 32 33) (BvExpr (Bv(20,32))))]]]]
 
 -- The approach taken in the following tests is to lift executable code into the IR,
 -- decompile executable code into the IR, numerically execute both IRs with the same
@@ -76,8 +108,62 @@ deadSetRegTest1 =
     let input = [0xB8, 0x0A, 0x00, 0x00, 0x00, -- mov eax, 0xa
                 0xB8, 0x14, 0x00, 0x00, 0x00] -- mov eax, 0x14
     decompiled <- decompile modes (allMemory modes) input
-    let count acc (SetReg _ reg _) | reg == fromX86Reg X86RegEax = acc + 1
-        count acc _ = acc
     -- Ensure that EAX is only set once
-    foldl count (0 :: Int) (flattenStmt decompiled) @?= 1
-    
+    count <- countStmtPattern decompiled (\(SetReg _ reg _) -> reg == fromX86Reg X86RegEax)
+    count @?= 1
+
+deadSetRegTest2 :: TestTree
+
+deadSetRegTest2 =
+  testCase "dead SetReg test 2" $ do
+    let modes = [Capstone.CsMode32]
+    let input = [0xB8, 0x0A, 0x00, 0x00, 0x00, -- mov eax, 0xa
+                0x6A, 0x1E, -- push 0x1e
+                0x8D, 0x40, 0x14] -- lea eax,[eax+0x14]
+    let initState = zeroStackReg $ zeroInsnPtr (numExecContext modes)
+    lifted <- lift modes input
+    decompiled <- decompile modes (allMemory modes) input
+    -- Ensure that both IRs do the same things to the machine
+    fetchExec initState lifted @?= exec initState decompiled
+
+deadSetRegTest3 :: TestTree
+
+deadSetRegTest3 =
+  testCase "dead SetReg test 3" $ do
+    let modes = [Capstone.CsMode32]
+    let input = [0xB8, 0x0A, 0x00, 0x00, 0x00, -- mov eax, 0xa
+                0x6A, 0x1E, -- push 0x1e
+                0x8D, 0x40, 0x14] -- lea eax,[eax+0x14]
+    decompiled <- decompile modes (allMemory modes) input
+    -- Ensure that EAX is only set once
+    count <- countStmtPattern decompiled (\(SetReg _ reg _) -> reg == fromX86Reg X86RegEax)
+    count @?= 1
+
+deadStoreTest0 :: TestTree
+
+deadStoreTest0 =
+  testCase "dead Store test 0" $ do
+    let modes = [Capstone.CsMode32]
+    let input = [0xC7, 0x00, 0x0A, 0x00, 0x00, 0x00, -- mov DWORD PTR [eax], 0xa
+                0x8B, 0x18, -- mov ebx, DWORD PTR [eax]
+                0x83, 0xC3, 0x1E, -- add ebx, 0x1e
+                0x89, 0x18] -- mov DWORD PTR [eax], ebx
+    decompiled <- decompile modes (allMemory modes) input
+    -- Ensure that DWORD PTR [EAX] is only set once
+    count <- countStmtPattern decompiled (\(Store _ (GetReg reg) _) -> reg == fromX86Reg X86RegEax)
+    count @?= 1
+
+deadStoreTest1 :: TestTree
+
+deadStoreTest1 =
+  testCase "dead Store test 0" $ do
+    let modes = [Capstone.CsMode32]
+    let input = [0xC7, 0x00, 0x0A, 0x00, 0x00, 0x00, -- mov DWORD PTR [eax], 0xa
+                0x8B, 0x18, -- mov ebx, DWORD PTR [eax]
+                0x83, 0xC3, 0x1E, -- add ebx, 0x1e
+                0x89, 0x18] -- mov DWORD PTR [eax], ebx
+    decompiled <- decompile modes (allMemory modes) input
+    -- Ensure that 0x28 is stored in DWORD PTR [EAX] is exactly once
+    count <- countStmtPattern decompiled (\(Store _ (GetReg reg) (BvExpr 0x28)) -> reg == fromX86Reg X86RegEax)
+    count @?= 1
+

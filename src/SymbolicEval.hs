@@ -183,7 +183,7 @@ symExecContext modes = SymExecutionContext {
 
 simplifyExprAux :: Expr -> Expr
 
-simplifyExprAux (BvmulExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvmul abv bbv)
+simplifyExprAux (BvmulExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (abv * bbv)
 
 simplifyExprAux (BvudivExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvudiv abv bbv)
 
@@ -197,15 +197,15 @@ simplifyExprAux (BvorExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvor abv bbv)
 
 simplifyExprAux (BvnotExpr (BvExpr abv)) = BvExpr (bvnot abv)
 
-simplifyExprAux (EqualExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (if bvequal abv bbv then toBv 1 1 else toBv 0 1)
+simplifyExprAux (EqualExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (if abv == bbv then toBv 1 1 else toBv 0 1)
 
-simplifyExprAux (BvaddExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvadd abv bbv)
+simplifyExprAux (BvaddExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (abv + bbv)
 
-simplifyExprAux (BvaddExpr a (BvExpr b)) | bvequal b (bvzero $ bvlength b) = a
+simplifyExprAux (BvaddExpr a (BvExpr b)) | b == (bvzero $ bvlength b) = a
 
-simplifyExprAux (BvaddExpr (BvExpr b) a) | bvequal b (bvzero $ bvlength b) = a
+simplifyExprAux (BvaddExpr (BvExpr b) a) | b == (bvzero $ bvlength b) = a
 
-simplifyExprAux (BvsubExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvsub abv bbv)
+simplifyExprAux (BvsubExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (abv - bbv)
 
 simplifyExprAux (BvlshrExpr (BvExpr abv) (BvExpr bbv)) = BvExpr (bvlshr abv bbv)
 
@@ -233,7 +233,7 @@ simplifyExprAux (ZxExpr a (BvExpr bbv)) = BvExpr (zx a bbv)
 
 simplifyExprAux (ZxExpr a e) | a == getExprSize e = e
 
-simplifyExprAux (IteExpr (BvExpr a) b c) = if bvequal a (bvzero $ bvlength a) then c else b
+simplifyExprAux (IteExpr (BvExpr a) b c) = if a == (bvzero $ bvlength a) then c else b
 -- The entire expression is being replaced
 simplifyExprAux (ReplaceExpr l a b) | getExprSize a == getExprSize b = b
 -- Join together two adjacent replacements

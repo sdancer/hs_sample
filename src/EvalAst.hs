@@ -65,7 +65,7 @@ lookupBv :: BitVector -> [(BitVector, BitVector)] -> Maybe BitVector
 
 lookupBv _ [] = Nothing
 
-lookupBv a ((b,c):d) | bvequal a b = Just c
+lookupBv a ((b,c):d) | a == b = Just c
 
 lookupBv a (_:d) = lookupBv a d
 
@@ -76,7 +76,7 @@ getMemoryValue :: [(BitVector, BitVector)] -> BitVector -> Int -> Maybe BitVecto
 getMemoryValue _ _ 0 = Just empty
 
 getMemoryValue mem a exprSize =
-  let nextAddr = bvadd a (toBv 1 (bvlength a))
+  let nextAddr = a + toBv 1 (bvlength a)
       nextSize = exprSize - byte_size_bit
   in case (lookupBv a mem, getMemoryValue mem nextAddr nextSize) of
     (Just x, Just y) -> Just (bvconcat y x)
@@ -90,7 +90,7 @@ updateMemory mem _ v | bvlength v == 0 = mem
 
 updateMemory mem d v =
   let nextBv = bvextract byte_size_bit (bvlength v) v
-      nextAddr = bvadd d (toBv 1 (bvlength d))
+      nextAddr = d + toBv 1 (bvlength d)
       currentVal = bvextract 0 byte_size_bit v
   in updateMemory (assign mem (d, currentVal)) nextAddr nextBv
 
@@ -126,13 +126,22 @@ zeroInsnPtr cin =
     (getInsnPtr modes) (toBv 0 (getArchBitSize modes)) }
       where modes = procModes cin
 
+-- Set the stack pointer to zero.
+
+zeroStackReg :: NumExecutionContext -> NumExecutionContext
+
+zeroStackReg cin =
+  cin { registerFile = updateRegisterFile (registerFile cin)
+    (getStackReg modes) (toBv 0 (getArchBitSize modes)) }
+      where modes = procModes cin
+
 -- Evaluates the given expression in the given context and returns the result
 
 eval :: NumExecutionContext -> Expr -> BitVector
 
 eval cin (BvExpr a) = a
 
-eval cin (BvmulExpr a b) = bvmul (eval cin a) (eval cin b)
+eval cin (BvmulExpr a b) = eval cin a * eval cin b
 
 eval cin (BvudivExpr a b) = bvudiv (eval cin a) (eval cin b)
 
@@ -146,21 +155,21 @@ eval cin (BvorExpr a b) = bvor (eval cin a) (eval cin b)
 
 eval cin (BvnotExpr a) = bvnot (eval cin a)
 
-eval cin (BvaddExpr a b) = bvadd (eval cin a) (eval cin b)
+eval cin (BvaddExpr a b) = eval cin a + eval cin b
 
-eval cin (BvsubExpr a b) = bvsub (eval cin a) (eval cin b)
+eval cin (BvsubExpr a b) = eval cin a - eval cin b
 
 eval cin (BvlshrExpr a b) = bvlshr (eval cin a) (eval cin b)
 
 eval cin (ZxExpr a b) = zx a (eval cin b)
 
-eval cin (IteExpr a b c) = if bvequal (eval cin a) bvtrue then eval cin c else eval cin b
+eval cin (IteExpr a b c) = if eval cin a == bvtrue then eval cin c else eval cin b
 
 eval cin (ReplaceExpr b c d) = bvreplace (eval cin c) b (eval cin d)
 
 eval cin (ExtractExpr a b c) = bvextract a b (eval cin c)
 
-eval cin (EqualExpr a b) = boolToBv $ bvequal (eval cin a) (eval cin b)
+eval cin (EqualExpr a b) = boolToBv (eval cin a == eval cin b)
 
 eval cin (BvugtExpr a b) = boolToBv $ bvugt (eval cin a) (eval cin b)
 
@@ -180,7 +189,7 @@ eval cin (BvsleExpr a b) = boolToBv $ bvsle (eval cin a) (eval cin b)
 
 eval cin (GetReg bs) =
   case getRegisterValue (registerFile cin) bs of
-    Nothing -> error "Read attempted on uninitialized memory."
+    Nothing -> error "Read attempted on uninitialized register."
     Just x -> x
 
 eval cin (Load a b) =
