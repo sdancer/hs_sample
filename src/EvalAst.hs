@@ -19,12 +19,6 @@ ranges :: NumRegisterFile -> [CompoundReg]
 
 ranges = fst . unzip
 
--- An empty register file for convenience
-
-emptyRegisterFile :: NumRegisterFile
-
-emptyRegisterFile = []
-
 -- Determines if the given register has a definite value in the register file
 
 isRegisterDefined :: NumRegisterFile -> CompoundReg -> Bool
@@ -112,16 +106,25 @@ data NumExecutionContext = NumExecutionContext {
   procModes :: [CsMode]
 } deriving (Eq, Show)
 
--- Creates a context where the instruction pointer points to the first instruction, and
--- memory and the register file are empty.
+-- Creates a context where memory and the register file are empty
 
 numExecContext :: [CsMode] -> NumExecutionContext
 
 numExecContext modes = NumExecutionContext {
   memory = [],
-  registerFile = updateRegisterFile emptyRegisterFile (get_insn_ptr modes) (toBv 0 (get_arch_bit_size modes)),
+  registerFile = [],
   procModes = modes
 }
+
+-- Make the instruction pointer of the given execution context point to the first
+-- instruction
+
+zeroInsnPtr :: NumExecutionContext -> NumExecutionContext
+
+zeroInsnPtr cin =
+  cin { registerFile = updateRegisterFile (registerFile cin)
+    (getInsnPtr modes) (toBv 0 (getArchBitSize modes)) }
+      where modes = procModes cin
 
 -- Evaluates the given expression in the given context and returns the result
 
@@ -195,19 +198,17 @@ assign ((c, d) : es) (a, b) | c == a = (a, b) : es
 
 assign ((c, d) : es) (a, b) | c /= a = (c, d) : assign es (a, b)
 
+-- Executes the given statement in the given context and returns the resulting context
+
 exec :: NumExecutionContext -> IdStmt -> NumExecutionContext
-
 -- Executes a SetReg operation by setting each byte of the register separately
-
 exec cin (SetReg _ bs a) = cin { registerFile = updateRegisterFile (registerFile cin) bs (eval cin a) }
-
 -- Executes a Store operation by setting each byte of memory separately
-
 exec cin (Store _ dst val) = cin { memory = updateMemory (memory cin) (eval cin dst) (eval cin val) }
-
 -- Executes a Compound statement by executing its constituents in order
-
 exec cin (Compound _ stmts) = foldl exec cin stmts
+-- Executes a Comment by just leaving the machine state unchanged
+exec cin (Comment _ _) = cin
 
 -- Lookup the statement with the given id
 
@@ -226,10 +227,10 @@ lookupStmt (stmt : stmts) id = lookupStmt stmts id
 -- Executes a group of statements pointed to by the instruction pointer and returns the
 -- new context
 
-step :: [IdStmt] -> NumExecutionContext -> NumExecutionContext
+fetchExec :: [IdStmt] -> NumExecutionContext -> NumExecutionContext
 
-step stmts cin =
-  let procInsnPtr = get_insn_ptr (procModes cin)
+fetchExec stmts cin =
+  let procInsnPtr = getInsnPtr (procModes cin)
   in case getRegisterValue (registerFile cin) procInsnPtr of
     Nothing -> error "Instruction pointer has not yet been set."
     Just registerValue -> exec cin (lookupStmt stmts (fromBvU registerValue))

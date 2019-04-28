@@ -178,8 +178,8 @@ labelStmts start (Comment id str) = (start + 1, Comment start str)
 labelStmts start (Compound id stmts) = (i, Compound start s)
   where (i,s) = mapAccumL labelStmts (start + 1) stmts
 
--- Lookup the inclusive range that contains the given Expr and the n-1 bytes that follow
--- it where n is the given integer.
+-- Lookup the start inclusive, end exclusive range that contains the given Expr and the
+-- n-1 bytes that follow it where n is the given integer.
 
 lookupRange :: MonadIO m => [(Expr, Expr)] -> Expr -> Int -> m (Maybe (Expr, Expr))
 
@@ -207,18 +207,19 @@ validateWrites ranges (Store (id, pdestAbs, absVal) pdestRel pvalRel) = do
   case range of
     Just _ -> return ()
     Nothing -> fail ("Unable to prove that " ++ stmt ++ " falls within writable memory.")
-                  where stmt = show (Store (id) pdestRel pvalRel :: Stmt Int () () ())
+                  where stmt = show (Store (id) pdestRel pvalRel :: IdStmt)
 
 validateWrites ranges (Compound id stmts) = mapM_ (validateWrites ranges) stmts
 
 validateWrites _ _ = return ()
 
--- The range that spans all memory.
+-- The range that spans all memory. -1 when taken as an unsigned quantity is the largest
+-- possible bit-vector because all its bits are set.
 
 allMemory :: [CsMode] -> [(Expr, Expr)]
 
 allMemory modes = [(BvExpr (toBv 0 archBitSize), BvExpr (toBv (-1) archBitSize))]
-              where archBitSize = get_arch_bit_size modes
+              where archBitSize = getArchBitSize modes
 
 -- Convert absolute statements to id statements
 

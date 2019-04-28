@@ -17,13 +17,13 @@ next_instr_ptr :: [CsMode] -> CsInsn -> Expr
 next_instr_ptr modes insn = BvExpr (toBv (insnAddr + insnLen) archBitSize)
   where insnAddr = fromIntegral (address insn)
         insnLen = fromIntegral (length (bytes insn))
-        archBitSize = fromIntegral (get_arch_bit_size modes)
+        archBitSize = fromIntegral (getArchBitSize modes)
 
 -- Make operation to increase instruction pointer by size of instruction
 
 inc_insn_ptr :: [CsMode] -> CsInsn -> IdStmt
 
-inc_insn_ptr modes insn = SetReg undefined (get_insn_ptr modes) (next_instr_ptr modes insn)
+inc_insn_ptr modes insn = SetReg undefined (getInsnPtr modes) (next_instr_ptr modes insn)
 
 -- Gets an expression for the given operand. Processor mode may be needed for computing
 -- effective addresses.
@@ -41,7 +41,7 @@ getOperandAst modes op =
 
 getZxRegister :: [CsMode] -> CompoundReg -> Expr
 
-getZxRegister modes reg = ZxExpr (get_arch_bit_size modes) (GetReg reg)
+getZxRegister modes reg = ZxExpr (getArchBitSize modes) (GetReg reg)
 
 -- Gets an expression for the memory location of the given memory operand
 
@@ -49,7 +49,7 @@ getLeaAst :: [CsMode] -> X86OpMemStruct -> Expr
 
 getLeaAst modes mem =
   (BvaddExpr node_disp (BvaddExpr node_base node_index)) where
-    arch_bit_size = get_arch_bit_size modes
+    arch_bit_size = getArchBitSize modes
     node_base = case base mem of
       X86RegInvalid -> BvExpr (toBv 0 arch_bit_size)
       reg -> getZxRegister modes (fromX86Reg reg)
@@ -323,8 +323,8 @@ push_s :: [CsMode] -> CsInsn -> IdStmt
 
 push_s modes inst =
   let (src : _) = x86operands inst
-      sp = get_stack_reg modes
-      arch_byte_size = get_arch_byte_size modes
+      sp = getStackReg modes
+      arch_byte_size = getArchByteSize modes
       -- If it's an immediate source, the memory access is always based on the arch size
       op_size = case (value src) of
         (Imm _) -> arch_byte_size
@@ -347,8 +347,8 @@ pop_s :: [CsMode] -> CsInsn -> IdStmt
 
 pop_s modes inst =
   let (dst : _) = x86operands inst
-      sp = get_stack_reg modes
-      arch_bit_size = get_arch_bit_size modes
+      sp = getStackReg modes
+      arch_bit_size = getArchBitSize modes
       op_size = fromIntegral $ size dst
       -- Is the ESP register is used as a base register for addressing a destination operand in memory?
       sp_base = case (value dst) of
@@ -381,15 +381,15 @@ mov_s modes inst =
       -- avoid having to simulate the GDT. This definition allows users to
       -- directly define their segments offset.
       node = (case (value dst_op) of
-        (Reg reg) | is_segment_reg reg -> ExtractExpr 0 word_size_bit tmp_node
+        (Reg reg) | isSegmentReg reg -> ExtractExpr 0 word_size_bit tmp_node
         _ -> tmp_node)
         where tmp_node = case (value src_op) of
-                (Reg reg) | is_segment_reg reg -> ExtractExpr 0 dst_size_bit src_ast
+                (Reg reg) | isSegmentReg reg -> ExtractExpr 0 dst_size_bit src_ast
                 _ -> src_ast
       undef = case (value src_op) of
-        (Reg reg) | is_control_reg reg -> True
+        (Reg reg) | isControlReg reg -> True
         _ -> case (value dst_op) of
-          (Reg reg) | is_control_reg reg -> True
+          (Reg reg) | isControlReg reg -> True
           _ -> False
   in Compound (fromIntegral (address inst))
       ([inc_insn_ptr modes inst,
@@ -423,7 +423,7 @@ jmp_s :: [CsMode] -> CsInsn -> IdStmt
 jmp_s modes inst =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst modes src_op
-  in Compound (fromIntegral (address inst)) [SetReg undefined (get_insn_ptr modes) src_ast]
+  in Compound (fromIntegral (address inst)) [SetReg undefined (getInsnPtr modes) src_ast]
 
 -- Make a list of operations in the IR that has the same semantics as the X86 je instruction
 
@@ -432,7 +432,7 @@ je_s :: [CsMode] -> CsInsn -> IdStmt
 je_s modes inst =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst modes src_op
-      insn_ptr = get_insn_ptr modes
+      insn_ptr = getInsnPtr modes
   in Compound (fromIntegral (address inst))
       [SetReg undefined insn_ptr
         (IteExpr (EqualExpr (GetReg (fromX86Flag X86FlagZf)) (BvExpr (toBv 1 1)))
@@ -446,7 +446,7 @@ jne_s :: [CsMode] -> CsInsn -> IdStmt
 jne_s modes inst =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst modes src_op
-      insn_ptr = get_insn_ptr modes
+      insn_ptr = getInsnPtr modes
   in Compound (fromIntegral (address inst))
       [SetReg undefined insn_ptr
         (IteExpr (EqualExpr (GetReg (fromX86Flag X86FlagZf)) (BvExpr (toBv 0 1)))
@@ -460,13 +460,13 @@ call_s :: [CsMode] -> CsInsn -> IdStmt
 call_s modes inst =
   let (src_op : _ ) = x86operands inst
       src_ast = getOperandAst modes src_op
-      sp = get_stack_reg modes
-      arch_byte_size = get_arch_byte_size modes
-      arch_bit_size = get_arch_bit_size modes
+      sp = getStackReg modes
+      arch_byte_size = getArchByteSize modes
+      arch_bit_size = getArchBitSize modes
   in Compound (fromIntegral (address inst))
       [SetReg undefined sp (BvsubExpr (GetReg sp) (BvExpr (toBv arch_byte_size arch_bit_size))),
       Store undefined (GetReg sp) (next_instr_ptr modes inst),
-      SetReg undefined (get_insn_ptr modes) (ZxExpr arch_bit_size src_ast)]
+      SetReg undefined (getInsnPtr modes) (ZxExpr arch_bit_size src_ast)]
 
 -- Make a list of operations in the IR that has the same semantics as the X86 ret instruction
 
@@ -474,9 +474,9 @@ ret_s :: [CsMode] -> CsInsn -> IdStmt
 
 ret_s modes inst =
   let operands = x86operands inst
-      sp = get_stack_reg modes
-      insn_ptr = get_insn_ptr modes
-      arch_byte_size = get_arch_byte_size modes
+      sp = getStackReg modes
+      insn_ptr = getInsnPtr modes
+      arch_byte_size = getArchByteSize modes
   in Compound (fromIntegral (address inst))
       ([SetReg undefined insn_ptr (GetReg sp),
       SetReg undefined sp (BvaddExpr (GetReg sp) (BvExpr (toBv arch_byte_size (arch_byte_size * byte_size_bit))))]
@@ -492,7 +492,7 @@ lea_s modes inst =
   let (dst_op : src_op : _ ) = x86operands inst
       dst_ast = getOperandAst modes dst_op
       dst_size = fromIntegral (size dst_op * byte_size_bit)
-      src_ea_size = get_arch_bit_size modes
+      src_ea_size = getArchBitSize modes
   in Compound (fromIntegral (address inst)) [
       inc_insn_ptr modes inst,
       case value src_op of

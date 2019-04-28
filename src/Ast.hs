@@ -122,9 +122,9 @@ getRegisterSize (l, h) = h - l
 
 -- Gets the stack register for the given processor mode
 
-get_stack_reg :: [CsMode] -> CompoundReg
+getStackReg :: [CsMode] -> CompoundReg
 
-get_stack_reg modes =
+getStackReg modes =
   if elem CsMode16 modes then fromX86Reg X86RegSp
   else if elem CsMode32 modes then fromX86Reg X86RegEsp
   else if elem CsMode64 modes then fromX86Reg X86RegRsp
@@ -132,9 +132,9 @@ get_stack_reg modes =
 
 -- Gets the instruction pointer for the given processor mode
 
-get_insn_ptr :: [CsMode] -> CompoundReg
+getInsnPtr :: [CsMode] -> CompoundReg
 
-get_insn_ptr modes =
+getInsnPtr modes =
   if elem CsMode16 modes then fromX86Reg X86RegIp
   else if elem CsMode32 modes then fromX86Reg X86RegEip
   else if elem CsMode64 modes then fromX86Reg X86RegRip
@@ -142,17 +142,17 @@ get_insn_ptr modes =
 
 -- Gets the architecture size for the given processor mode
 
-get_arch_byte_size :: [CsMode] -> Int
+getArchByteSize :: [CsMode] -> Int
 
-get_arch_byte_size modes =
+getArchByteSize modes =
   if elem CsMode16 modes then 2
   else if elem CsMode32 modes then 4
   else if elem CsMode64 modes then 8
   else error "Processor modes underspecified."
 
-get_arch_bit_size :: [CsMode] -> Int
+getArchBitSize :: [CsMode] -> Int
 
-get_arch_bit_size = (* byte_size_bit) . get_arch_byte_size
+getArchBitSize = (* byte_size_bit) . getArchByteSize
 
 -- Adds the given register to the given list taking care to combine those that overlap
 
@@ -208,15 +208,15 @@ registerSub (l1, h1) (l2, h2) = (l1-l2, h1-l2)
 
 -- Checks if the given register is a segment register
 
-is_segment_reg :: X86.X86Reg -> Bool
+isSegmentReg :: X86.X86Reg -> Bool
 
-is_segment_reg reg = elem reg [X86RegCs, X86RegDs, X86RegSs, X86RegEs, X86RegFs, X86RegGs]
+isSegmentReg reg = elem reg [X86RegCs, X86RegDs, X86RegSs, X86RegEs, X86RegFs, X86RegGs]
 
 -- Checks if the given register is a control register
 
-is_control_reg :: X86.X86Reg -> Bool
+isControlReg :: X86.X86Reg -> Bool
 
-is_control_reg reg = elem reg
+isControlReg reg = elem reg
   [X86RegCr0, X86RegCr1, X86RegCr2, X86RegCr3, X86RegCr4, X86RegCr5, X86RegCr6,
   X86RegCr7, X86RegCr8, X86RegCr9, X86RegCr10, X86RegCr11, X86RegCr12, X86RegCr13,
   X86RegCr14, X86RegCr15]
@@ -734,11 +734,10 @@ exprToSVal (GetReg a) = do
 
 exprToSVal (UndefinedExpr a) = sWordN_ a
 
--- Checks if two expressions are equal using an SMT solver. Returns Just True after I/O if
--- SMT solver is able to prove that expressions are equal for all variable assignments.
--- Returns Just False after I/O if SMT solver is able to prove that expressions are
--- unequal for all variable assignments. Returns Nothing after I/O is SMT solver is not
--- able to prove either.
+-- Checks the given relation using an SMT solver. Returns Just True after I/O if SMT
+-- solver is able to prove the relation for all variable assignments. Returns Just False
+-- after I/O if SMT solver is able to prove the negation of the relation for all variable
+-- assignments. Returns Nothing after I/O is SMT solver is not able to prove either.
 
 proveRelation :: MonadIO m => Expr -> m (Maybe Bool)
 
