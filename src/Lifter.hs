@@ -12,30 +12,6 @@ import SymbolicEval
 import Phasses
 import Data.Maybe
 
---x86 vs arm, etc?
-mmp :: [CsMode] -> CsInsn -> IdStmt
-
-mmp modes a = (case toEnum (fromIntegral (insnId a)) of
-  X86InsAdd -> add_s
-  X86InsMov -> mov_s
-  X86InsMovzx -> movzx_s
-  X86InsSub -> sub_s
-  X86InsCmp -> cmp_s
-  X86InsPush -> push_s
-  X86InsPop -> pop_s
-  X86InsXor -> xor_s
-  X86InsAnd -> and_s
-  X86InsOr -> or_s
-  X86InsJmp -> jmp_s
-  X86InsJe -> je_s
-  X86InsJne -> jne_s
-  X86InsLea -> lea_s
-  X86InsInc -> inc_s
-  X86InsCall -> call_s
-  X86InsRet -> ret_s
-  X86InsTest -> test_s
-  _ -> \_ _ -> Comment (fromIntegral (address a)) ("Instruction " ++ mnemonic a ++ " not supported. Ignoring opcode.")) modes a
-
 -- Takes the processor mode and the executable code. Returns an ordered list of IdStmts
 -- such that for each instruction, there is exactly one IdStmt with the same semantics and
 -- an id equal to the address of the instruction.
@@ -44,9 +20,9 @@ lift :: [CsMode] -> [Word8] -> IO [IdStmt]
 
 lift modes input = do
   asm <- disasmSimpleIO $ disasm modes input 0
-  return (case asm of
+  return $ case asm of
     Left _ -> error "Error in disassembling machine code."
-    Right csInsns -> map (mmp modes) csInsns)
+    Right csInsns -> map (liftX86 modes) csInsns
 
 -- Takes the processor mode, writable address ranges, and executable code. Validates
 -- memory accesses and returns a simplified Stmt in the IR that is semantically
