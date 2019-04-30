@@ -11,7 +11,6 @@ import EvalAst
 import Hapstone.Internal.X86 as X86
 import BitVector
 import Control.Exception
-import Data.Functor
 
 main :: IO ()
 main = defaultMain $
@@ -23,7 +22,7 @@ main = defaultMain $
     , deadSetRegTest2
     , deadSetRegTest3
     , deadStoreTest0
-    , deadStoreTest1
+    , referenceTest0
     --, testBlockOne
   ]
 
@@ -150,20 +149,26 @@ deadStoreTest0 =
                 0x89, 0x18] -- mov DWORD PTR [eax], ebx
     decompiled <- decompile modes (allMemory modes) input
     -- Ensure that DWORD PTR [EAX] is only set once
-    count <- countStmtPattern decompiled (\(Store _ (GetReg reg) _) -> reg == fromX86Reg X86RegEax)
-    count @?= 1
-
-deadStoreTest1 :: TestTree
-
-deadStoreTest1 =
-  testCase "dead Store test 0" $ do
-    let modes = [Capstone.CsMode32]
-    let input = [0xC7, 0x00, 0x0A, 0x00, 0x00, 0x00, -- mov DWORD PTR [eax], 0xa
-                0x8B, 0x18, -- mov ebx, DWORD PTR [eax]
-                0x83, 0xC3, 0x1E, -- add ebx, 0x1e
-                0x89, 0x18] -- mov DWORD PTR [eax], ebx
-    decompiled <- decompile modes (allMemory modes) input
+    varCount <- countStmtPattern decompiled (\(Store _ (GetReg reg) _) -> reg == fromX86Reg X86RegEax)
+    varCount @?= 1
     -- Ensure that 0x28 is stored in DWORD PTR [EAX] is exactly once
-    count <- countStmtPattern decompiled (\(Store _ (GetReg reg) (BvExpr 0x28)) -> reg == fromX86Reg X86RegEax)
-    count @?= 1
+    valCount <- countStmtPattern decompiled (\(Store _ (GetReg reg) (BvExpr 0x28)) -> reg == fromX86Reg X86RegEax)
+    valCount @?= 1
+
+referenceTest0 :: TestTree
+
+referenceTest0 =
+  testCase "reference test 0" $ do
+    let modes = [Capstone.CsMode32]
+    let input = [0x57, -- push edi
+                0x56, -- push esi
+                0x5B, -- pop ebx
+                0x58] -- pop eax
+    decompiled <- decompile modes (allMemory modes) input
+    -- Ensure that a reference is stored in EBX is exactly once
+    ebxCount <- countStmtPattern decompiled (\(SetReg _ reg (ReferenceExpr 32 _)) -> reg == fromX86Reg X86RegEbx)
+    ebxCount @?= 1
+    -- Ensure that a reference is stored in EAX is exactly once
+    eaxCount <- countStmtPattern decompiled (\(SetReg _ reg (ReferenceExpr 32 _)) -> reg == fromX86Reg X86RegEax)
+    eaxCount @?= 1
 

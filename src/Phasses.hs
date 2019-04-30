@@ -151,13 +151,16 @@ insertRefs :: MonadIO m => SymExecutionContext -> AbsStmt -> m (SymExecutionCont
 
 insertRefs cin (SetReg (id, absVal) bs a) = do
   relVal <- simplifyExpr <$> substituteRel cin a
-  return (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id) },
+  return (cin { absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absVal,
+            relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id) },
         SetReg (id, absVal) bs relVal)
 
 insertRefs cin (Store (id, pdestAbs, absVal) pdestRel pvalRel) = do
   pvalRel <- simplifyExpr <$> substituteRel cin pvalRel
+  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdestAbs, absVal)
   relativeMemoryV <- updateMemory (relativeMemory cin) (pdestAbs, toStaticExpr pvalRel id)
-  return (cin { relativeMemory = relativeMemoryV }, Store (id, pdestAbs, absVal) pdestRel pvalRel)
+  return (cin { absoluteMemory = absoluteMemoryV, relativeMemory = relativeMemoryV },
+        Store (id, pdestAbs, absVal) pdestRel pvalRel)
 
 insertRefs cin (Comment id str) = return (cin, Comment id str)
 
