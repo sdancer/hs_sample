@@ -77,7 +77,7 @@ getMemoryValue _ _ 0 = Just empty
 
 getMemoryValue mem a exprSize =
   let nextAddr = a + toBv 1 (bvlength a)
-      nextSize = exprSize - byte_size_bit
+      nextSize = exprSize - byteSizeBit
   in case (lookupBv a mem, getMemoryValue mem nextAddr nextSize) of
     (Just x, Just y) -> Just (bvconcat y x)
     _ -> Nothing
@@ -89,9 +89,9 @@ updateMemory :: [(BitVector, BitVector)] -> BitVector -> BitVector -> [(BitVecto
 updateMemory mem _ v | bvlength v == 0 = mem
 
 updateMemory mem d v =
-  let nextBv = bvextract byte_size_bit (bvlength v) v
+  let nextBv = bvextract byteSizeBit (bvlength v) v
       nextAddr = d + toBv 1 (bvlength d)
-      currentVal = bvextract 0 byte_size_bit v
+      currentVal = bvextract 0 byteSizeBit v
   in updateMemory (assign mem (d, currentVal)) nextAddr nextBv
 
 -- Represents the state of a processor: register file contents, data memory contents, and

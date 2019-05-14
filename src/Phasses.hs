@@ -189,7 +189,7 @@ lookupRange :: MonadIO m => [(Expr, Expr)] -> Expr -> Int -> m (Maybe (Expr, Exp
 lookupRange [] _ _ = return Nothing
 
 lookupRange ((rangeStart, rangeEnd):rst) exprStart sz = do
-  let exprEnd = BvaddExpr exprStart (BvExpr (toBv (div sz byte_size_bit) (getExprSize exprStart)))
+  let exprEnd = BvaddExpr exprStart (BvExpr (toBv (div sz byteSizeBit) (getExprSize exprStart)))
   -- The subtractions in the following inequalities are necessary because we are doing
   -- modular arithmetic.
   result <- proveRelation (BvandExpr

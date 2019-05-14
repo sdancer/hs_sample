@@ -13,20 +13,19 @@ import Data.Maybe
 import Control.Monad.State.Lazy
 import Data.Coerce
 import Data.Functor.Identity
-import Debug.Trace
 
-byte_size_bit :: Num a => a
-byte_size_bit = 8
-word_size_bit :: Num a => a
-word_size_bit = 16
-dword_size_bit = 32
-qword_size_bit = 64
-dqword_size_bit = 128
-qqword_size_bit = 256
-dqqword_size_bit = 512
+byteSizeBit :: Num a => a
+byteSizeBit = 8
+wordSizeBit :: Num a => a
+wordSizeBit = 16
+dWordSizeBit = 32
+qWordSizeBit = 64
+dqWordSizeBit = 128
+qqWordSizeBit = 256
+dqqWordSizeBit = 512
 
-reg_file_bits :: Num a => a
-reg_file_bits = 192 * byte_size_bit
+regFileBits :: Num a => a
+regFileBits = 192 * byteSizeBit
 
 data X86Flag =
     X86FlagCf | X86FlagPf | X86FlagAf | X86FlagZf | X86FlagSf | X86FlagTf | X86FlagIf
@@ -83,7 +82,7 @@ x86RegisterMap = [
 
 -- EFLAGS Register
 
-  {-,(X86RegEflags, b(176,184))-}] where b(l,h) = (l*byte_size_bit,h*byte_size_bit)
+  {-,(X86RegEflags, b(176,184))-}] where b(l,h) = (l*byteSizeBit,h*byteSizeBit)
 
 -- Convert an X86Reg to a CompoundReg
 
@@ -104,7 +103,7 @@ x86FlagMap = [(X86FlagCf, c(176,0,1)), (X86FlagPf, c(176,2,3)),
   (X86FlagRf, c(176,16,17)), (X86FlagVm, c(176,17,18)), (X86FlagAc, c(176,18,19)),
   (X86FlagVif, c(176,19,20)), (X86FlagVip, c(176,20,21)), (X86FlagId, c(176,21,22))]
   
-  where c(b,l,h) = (b*byte_size_bit+l,b*byte_size_bit+h)
+  where c(b,l,h) = (b*byteSizeBit+l,b*byteSizeBit+h)
 
 -- Convert an X86Reg to a CompoundReg
 
@@ -152,7 +151,7 @@ getArchByteSize modes =
 
 getArchBitSize :: [CsMode] -> Int
 
-getArchBitSize = (* byte_size_bit) . getArchByteSize
+getArchBitSize = (* byteSizeBit) . getArchByteSize
 
 -- Adds the given register to the given list taking care to combine those that overlap
 
@@ -710,18 +709,18 @@ exprToSVal (Load 0 _) = exprToSVal (BvExpr (bvzero 0))
 exprToSVal (Load a b) = do
   exprValAssocs <- get
   let (exprs, svals) = unzip exprValAssocs
-  results <- mapM proveRelation $ map (EqualExpr (Load byte_size_bit b)) exprs
+  results <- mapM proveRelation $ map (EqualExpr (Load byteSizeBit b)) exprs
   if elem Nothing results then
     fail "Could not determine the equality of two expressions."
   else if not $ elem (Just True) results then do
-    let newExpr = Load byte_size_bit b
-    newVar <- sWordN_ byte_size_bit
+    let newExpr = Load byteSizeBit b
+    newVar <- sWordN_ byteSizeBit
     put ((newExpr, newVar) : exprValAssocs)
     exprToSVal (Load a b)
   else do
     let boolValAssocs = zip results svals
         val = fromJust $ lookup (Just True) boolValAssocs
-    rest <- exprToSVal (Load (a - byte_size_bit) (BvaddExpr b (BvExpr $ bvone (getExprSize b))))
+    rest <- exprToSVal (Load (a - byteSizeBit) (BvaddExpr b (BvExpr $ bvone (getExprSize b))))
     return $ svJoin val rest
 
 -- Turn a GetReg into an SVal by looking up the corresponding SVal in the current
