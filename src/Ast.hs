@@ -13,20 +13,19 @@ import Data.Maybe
 import Control.Monad.State.Lazy
 import Data.Coerce
 import Data.Functor.Identity
-import Debug.Trace
 
-byte_size_bit :: Num a => a
-byte_size_bit = 8
-word_size_bit :: Num a => a
-word_size_bit = 16
-dword_size_bit = 32
-qword_size_bit = 64
-dqword_size_bit = 128
-qqword_size_bit = 256
-dqqword_size_bit = 512
+byteSizeBit :: Num a => a
+byteSizeBit = 8
+wordSizeBit :: Num a => a
+wordSizeBit = 16
+dWordSizeBit = 32
+qWordSizeBit = 64
+dqWordSizeBit = 128
+qqWordSizeBit = 256
+dqqWordSizeBit = 512
 
-reg_file_bits :: Num a => a
-reg_file_bits = 192 * byte_size_bit
+regFileBits :: Num a => a
+regFileBits = 192 * byteSizeBit
 
 data X86Flag =
     X86FlagCf | X86FlagPf | X86FlagAf | X86FlagZf | X86FlagSf | X86FlagTf | X86FlagIf
@@ -83,7 +82,7 @@ x86RegisterMap = [
 
 -- EFLAGS Register
 
-  {-,(X86RegEflags, b(176,184))-}] where b(l,h) = (l*byte_size_bit,h*byte_size_bit)
+  {-,(X86RegEflags, b(176,184))-}] where b(l,h) = (l*byteSizeBit,h*byteSizeBit)
 
 -- Convert an X86Reg to a CompoundReg
 
@@ -104,7 +103,7 @@ x86FlagMap = [(X86FlagCf, c(176,0,1)), (X86FlagPf, c(176,2,3)),
   (X86FlagRf, c(176,16,17)), (X86FlagVm, c(176,17,18)), (X86FlagAc, c(176,18,19)),
   (X86FlagVif, c(176,19,20)), (X86FlagVip, c(176,20,21)), (X86FlagId, c(176,21,22))]
   
-  where c(b,l,h) = (b*byte_size_bit+l,b*byte_size_bit+h)
+  where c(b,l,h) = (b*byteSizeBit+l,b*byteSizeBit+h)
 
 -- Convert an X86Reg to a CompoundReg
 
@@ -122,9 +121,9 @@ getRegisterSize (l, h) = h - l
 
 -- Gets the stack register for the given processor mode
 
-get_stack_reg :: [CsMode] -> CompoundReg
+getStackReg :: [CsMode] -> CompoundReg
 
-get_stack_reg modes =
+getStackReg modes =
   if elem CsMode16 modes then fromX86Reg X86RegSp
   else if elem CsMode32 modes then fromX86Reg X86RegEsp
   else if elem CsMode64 modes then fromX86Reg X86RegRsp
@@ -132,9 +131,9 @@ get_stack_reg modes =
 
 -- Gets the instruction pointer for the given processor mode
 
-get_insn_ptr :: [CsMode] -> CompoundReg
+getInsnPtr :: [CsMode] -> CompoundReg
 
-get_insn_ptr modes =
+getInsnPtr modes =
   if elem CsMode16 modes then fromX86Reg X86RegIp
   else if elem CsMode32 modes then fromX86Reg X86RegEip
   else if elem CsMode64 modes then fromX86Reg X86RegRip
@@ -142,17 +141,17 @@ get_insn_ptr modes =
 
 -- Gets the architecture size for the given processor mode
 
-get_arch_byte_size :: [CsMode] -> Int
+getArchByteSize :: [CsMode] -> Int
 
-get_arch_byte_size modes =
+getArchByteSize modes =
   if elem CsMode16 modes then 2
   else if elem CsMode32 modes then 4
   else if elem CsMode64 modes then 8
   else error "Processor modes underspecified."
 
-get_arch_bit_size :: [CsMode] -> Int
+getArchBitSize :: [CsMode] -> Int
 
-get_arch_bit_size = (* byte_size_bit) . get_arch_byte_size
+getArchBitSize = (* byteSizeBit) . getArchByteSize
 
 -- Adds the given register to the given list taking care to combine those that overlap
 
@@ -208,15 +207,15 @@ registerSub (l1, h1) (l2, h2) = (l1-l2, h1-l2)
 
 -- Checks if the given register is a segment register
 
-is_segment_reg :: X86.X86Reg -> Bool
+isSegmentReg :: X86.X86Reg -> Bool
 
-is_segment_reg reg = elem reg [X86RegCs, X86RegDs, X86RegSs, X86RegEs, X86RegFs, X86RegGs]
+isSegmentReg reg = elem reg [X86RegCs, X86RegDs, X86RegSs, X86RegEs, X86RegFs, X86RegGs]
 
 -- Checks if the given register is a control register
 
-is_control_reg :: X86.X86Reg -> Bool
+isControlReg :: X86.X86Reg -> Bool
 
-is_control_reg reg = elem reg
+isControlReg reg = elem reg
   [X86RegCr0, X86RegCr1, X86RegCr2, X86RegCr3, X86RegCr4, X86RegCr5, X86RegCr6,
   X86RegCr7, X86RegCr8, X86RegCr9, X86RegCr10, X86RegCr11, X86RegCr12, X86RegCr13,
   X86RegCr14, X86RegCr15]
@@ -400,79 +399,92 @@ getExprSize (Load a b) = a
 
 getExprSize (GetReg a) = getRegisterSize a
 
+-- Creates a post-ordered list of statements from the given statement. Sometimes the
+-- hierarchy is a hindrance in computations.
+
+flattenStmt :: Stmt a b c d -> [Stmt a b c d]
+
+flattenStmt (Store a b c) = [Store a b c]
+
+flattenStmt (SetReg a b c) = [SetReg a b c]
+
+flattenStmt (Compound a b) = (concat $ map flattenStmt b) ++ [Compound a b]
+
+flattenStmt (Comment a b) = [Comment a b]
+
 -- Creates a post-ordered list of expressions from the given expression. Sometimes the
 -- hierarchy is a hindrance in computations.
 
-flatten :: Expr -> [Expr]
+flattenExpr :: Expr -> [Expr]
 
-flatten (BvExpr bv) = [(BvExpr bv)]
+flattenExpr (BvExpr bv) = [(BvExpr bv)]
 
-flatten (BvmulExpr a b) = flatten a ++ flatten b ++ [BvmulExpr a b]
+flattenExpr (BvmulExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvmulExpr a b]
 
-flatten (BvudivExpr a b) = flatten a ++ flatten b ++ [BvudivExpr a b]
+flattenExpr (BvudivExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvudivExpr a b]
 
-flatten (BvsdivExpr a b) = flatten a ++ flatten b ++ [BvsdivExpr a b]
+flattenExpr (BvsdivExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsdivExpr a b]
 
-flatten (BvugtExpr a b) = flatten a ++ flatten b ++ [BvugtExpr a b]
+flattenExpr (BvugtExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvugtExpr a b]
 
-flatten (BvultExpr a b) = flatten a ++ flatten b ++ [BvultExpr a b]
+flattenExpr (BvultExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvultExpr a b]
 
-flatten (BvugeExpr a b) = flatten a ++ flatten b ++ [BvugeExpr a b]
+flattenExpr (BvugeExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvugeExpr a b]
 
-flatten (BvuleExpr a b) = flatten a ++ flatten b ++ [BvuleExpr a b]
+flattenExpr (BvuleExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvuleExpr a b]
 
-flatten (BvsgtExpr a b) = flatten a ++ flatten b ++ [BvsgtExpr a b]
+flattenExpr (BvsgtExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsgtExpr a b]
 
-flatten (BvsltExpr a b) = flatten a ++ flatten b ++ [BvsltExpr a b]
+flattenExpr (BvsltExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsltExpr a b]
 
-flatten (BvsgeExpr a b) = flatten a ++ flatten b ++ [BvsgeExpr a b]
+flattenExpr (BvsgeExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsgeExpr a b]
 
-flatten (BvsleExpr a b) = flatten a ++ flatten b ++ [BvsleExpr a b]
+flattenExpr (BvsleExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsleExpr a b]
 
-flatten (BvaddExpr a b) = flatten a ++ flatten b ++ [BvaddExpr a b]
+flattenExpr (BvaddExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvaddExpr a b]
 
-flatten (BvandExpr a b) = flatten a ++ flatten b ++ [BvandExpr a b]
+flattenExpr (BvandExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvandExpr a b]
 
-flatten (BvashrExpr a b) = flatten a ++ flatten b ++ [BvashrExpr a b]
+flattenExpr (BvashrExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvashrExpr a b]
 
-flatten (BvlshrExpr a b) = flatten a ++ flatten b ++ [BvlshrExpr a b]
+flattenExpr (BvlshrExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvlshrExpr a b]
 
-flatten (BvnegExpr a) = flatten a ++ [BvnegExpr a]
+flattenExpr (BvnegExpr a) = flattenExpr a ++ [BvnegExpr a]
 
-flatten (BvnotExpr a) = flatten a ++ [BvnotExpr a]
+flattenExpr (BvnotExpr a) = flattenExpr a ++ [BvnotExpr a]
 
-flatten (BvorExpr a b) = flatten a ++ flatten b ++ [BvorExpr a b]
+flattenExpr (BvorExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvorExpr a b]
 
-flatten (BvrolExpr a b) = flatten a ++ flatten b ++ [BvrolExpr a b]
+flattenExpr (BvrolExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvrolExpr a b]
 
-flatten (BvrorExpr a b) = flatten a ++ flatten b ++ [BvrorExpr a b]
+flattenExpr (BvrorExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvrorExpr a b]
 
-flatten (BvsubExpr a b) = flatten a ++ flatten b ++ [BvsubExpr a b]
+flattenExpr (BvsubExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvsubExpr a b]
 
-flatten (BvxorExpr a b) = flatten a ++ flatten b ++ [BvxorExpr a b]
+flattenExpr (BvxorExpr a b) = flattenExpr a ++ flattenExpr b ++ [BvxorExpr a b]
 
-flatten (ConcatExpr a) = foldl (++) [] (map flatten a) ++ [ConcatExpr a]
+flattenExpr (ConcatExpr a) = foldl (++) [] (map flattenExpr a) ++ [ConcatExpr a]
 
-flatten (EqualExpr a b) = flatten a ++ flatten b ++ [EqualExpr a b]
+flattenExpr (EqualExpr a b) = flattenExpr a ++ flattenExpr b ++ [EqualExpr a b]
 
-flatten (ExtractExpr l h e) = flatten e ++ [ExtractExpr l h e]
+flattenExpr (ExtractExpr l h e) = flattenExpr e ++ [ExtractExpr l h e]
 
-flatten (ReplaceExpr l a b) = flatten a ++ flatten b ++ [ReplaceExpr l a b]
+flattenExpr (ReplaceExpr l a b) = flattenExpr a ++ flattenExpr b ++ [ReplaceExpr l a b]
 
-flatten (IteExpr a b c) = flatten a ++ flatten b ++ flatten c ++ [IteExpr a b c]
+flattenExpr (IteExpr a b c) = flattenExpr a ++ flattenExpr b ++ flattenExpr c ++ [IteExpr a b c]
 
-flatten (ReferenceExpr a b) = [ReferenceExpr a b]
+flattenExpr (ReferenceExpr a b) = [ReferenceExpr a b]
 
-flatten (SxExpr a b) = flatten b ++ [SxExpr a b]
+flattenExpr (SxExpr a b) = flattenExpr b ++ [SxExpr a b]
 
-flatten (ZxExpr a b) = flatten b ++ [ZxExpr a b]
+flattenExpr (ZxExpr a b) = flattenExpr b ++ [ZxExpr a b]
 
-flatten (UndefinedExpr a) = [UndefinedExpr a]
+flattenExpr (UndefinedExpr a) = [UndefinedExpr a]
 -- Does not recur into b. This is in order to be consistent with mapMExpr and exprToSVal
 -- which also do not recur into b.
-flatten (Load a b) = [Load a b]
+flattenExpr (Load a b) = [Load a b]
 
-flatten (GetReg a) = [GetReg a]
+flattenExpr (GetReg a) = [GetReg a]
 
 -- Going through the expression tree in post-order, monadically map expressions to other
 -- expressions using the given function.
@@ -697,18 +709,18 @@ exprToSVal (Load 0 _) = exprToSVal (BvExpr (bvzero 0))
 exprToSVal (Load a b) = do
   exprValAssocs <- get
   let (exprs, svals) = unzip exprValAssocs
-  results <- mapM proveRelation $ map (EqualExpr (Load byte_size_bit b)) exprs
+  results <- mapM proveRelation $ map (EqualExpr (Load byteSizeBit b)) exprs
   if elem Nothing results then
     fail "Could not determine the equality of two expressions."
   else if not $ elem (Just True) results then do
-    let newExpr = Load byte_size_bit b
-    newVar <- sWordN_ byte_size_bit
+    let newExpr = Load byteSizeBit b
+    newVar <- sWordN_ byteSizeBit
     put ((newExpr, newVar) : exprValAssocs)
     exprToSVal (Load a b)
   else do
     let boolValAssocs = zip results svals
         val = fromJust $ lookup (Just True) boolValAssocs
-    rest <- exprToSVal (Load (a - byte_size_bit) (BvaddExpr b (BvExpr $ bvone (getExprSize b))))
+    rest <- exprToSVal (Load (a - byteSizeBit) (BvaddExpr b (BvExpr $ bvone (getExprSize b))))
     return $ svJoin val rest
 
 -- Turn a GetReg into an SVal by looking up the corresponding SVal in the current
@@ -734,11 +746,10 @@ exprToSVal (GetReg a) = do
 
 exprToSVal (UndefinedExpr a) = sWordN_ a
 
--- Checks if two expressions are equal using an SMT solver. Returns Just True after I/O if
--- SMT solver is able to prove that expressions are equal for all variable assignments.
--- Returns Just False after I/O if SMT solver is able to prove that expressions are
--- unequal for all variable assignments. Returns Nothing after I/O is SMT solver is not
--- able to prove either.
+-- Checks the given relation using an SMT solver. Returns Just True after I/O if SMT
+-- solver is able to prove the relation for all variable assignments. Returns Just False
+-- after I/O if SMT solver is able to prove the negation of the relation for all variable
+-- assignments. Returns Nothing after I/O is SMT solver is not able to prove either.
 
 proveRelation :: MonadIO m => Expr -> m (Maybe Bool)
 

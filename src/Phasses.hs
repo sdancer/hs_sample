@@ -19,16 +19,16 @@ updateDefinedRegisters regs (Comment _ _) = regs
 updateDefinedRegisters regs (SetReg _ reg expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
-        Load a b -> foldl removeAccessedReg rs (flatten b)
+        Load a b -> foldl removeAccessedReg rs (flattenExpr b)
         _ -> rs
-  in foldl removeAccessedReg (addRegister regs reg) (flatten expr)
+  in foldl removeAccessedReg (addRegister regs reg) (flattenExpr expr)
 
 updateDefinedRegisters regs (Store _ _ expr) =
   let removeAccessedReg rs e = case e of
         GetReg r -> removeRegister rs r
-        Load a b -> foldl removeAccessedReg rs (flatten b)
+        Load a b -> foldl removeAccessedReg rs (flattenExpr b)
         _ -> rs
-  in foldl removeAccessedReg regs (flatten expr)
+  in foldl removeAccessedReg regs (flattenExpr expr)
 
 updateDefinedRegisters regs (Compound _ stmts) =
   foldl updateDefinedRegisters regs stmts
@@ -91,17 +91,17 @@ updateDefinedAddresses addrs (SetReg (id, valAbs) _ _) =
   let removeAccessedAddr as e = case e of
         Load a b -> do
           rmed <- removeExpr as b
-          foldM removeAccessedAddr rmed (flatten b)
+          foldM removeAccessedAddr rmed (flattenExpr b)
         _ -> return as
-  in foldM removeAccessedAddr addrs (flatten valAbs)
+  in foldM removeAccessedAddr addrs (flattenExpr valAbs)
 
 updateDefinedAddresses addrs (Store (id, destAbs, valAbs) _ _) =
   let removeAccessedAddr as e = case e of
         Load a b -> do
           rmed <- removeExpr as b
-          foldM removeAccessedAddr as (flatten b)
+          foldM removeAccessedAddr as (flattenExpr b)
         _ -> return as
-  in foldM removeAccessedAddr (destAbs:addrs) (flatten valAbs)
+  in foldM removeAccessedAddr (destAbs:addrs) (flattenExpr valAbs)
 
 updateDefinedAddresses addrs (Compound _ stmts) =
   foldM updateDefinedAddresses addrs stmts
@@ -151,13 +151,16 @@ insertRefs :: MonadIO m => SymExecutionContext -> AbsStmt -> m (SymExecutionCont
 
 insertRefs cin (SetReg (id, absVal) bs a) = do
   relVal <- simplifyExpr <$> substituteRel cin a
-  return (cin { relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id) },
+  return (cin { absoluteRegisterFile = setRegisterValue (absoluteRegisterFile cin) bs absVal,
+            relativeRegisterFile = setRegisterValue (relativeRegisterFile cin) bs (toStaticExpr relVal id) },
         SetReg (id, absVal) bs relVal)
 
 insertRefs cin (Store (id, pdestAbs, absVal) pdestRel pvalRel) = do
   pvalRel <- simplifyExpr <$> substituteRel cin pvalRel
+  absoluteMemoryV <- updateMemory (absoluteMemory cin) (pdestAbs, absVal)
   relativeMemoryV <- updateMemory (relativeMemory cin) (pdestAbs, toStaticExpr pvalRel id)
-  return (cin { relativeMemory = relativeMemoryV }, Store (id, pdestAbs, absVal) pdestRel pvalRel)
+  return (cin { absoluteMemory = absoluteMemoryV, relativeMemory = relativeMemoryV },
+        Store (id, pdestAbs, absVal) pdestRel pvalRel)
 
 insertRefs cin (Comment id str) = return (cin, Comment id str)
 
@@ -178,15 +181,15 @@ labelStmts start (Comment id str) = (start + 1, Comment start str)
 labelStmts start (Compound id stmts) = (i, Compound start s)
   where (i,s) = mapAccumL labelStmts (start + 1) stmts
 
--- Lookup the inclusive range that contains the given Expr and the n-1 bytes that follow
--- it where n is the given integer.
+-- Lookup the start inclusive, end exclusive range that contains the given Expr and the
+-- n-1 bytes that follow it where n is the given integer.
 
 lookupRange :: MonadIO m => [(Expr, Expr)] -> Expr -> Int -> m (Maybe (Expr, Expr))
 
 lookupRange [] _ _ = return Nothing
 
 lookupRange ((rangeStart, rangeEnd):rst) exprStart sz = do
-  let exprEnd = BvaddExpr exprStart (BvExpr (toBv (div sz byte_size_bit) (getExprSize exprStart)))
+  let exprEnd = BvaddExpr exprStart (BvExpr (toBv (div sz byteSizeBit) (getExprSize exprStart)))
   -- The subtractions in the following inequalities are necessary because we are doing
   -- modular arithmetic.
   result <- proveRelation (BvandExpr
@@ -207,18 +210,19 @@ validateWrites ranges (Store (id, pdestAbs, absVal) pdestRel pvalRel) = do
   case range of
     Just _ -> return ()
     Nothing -> fail ("Unable to prove that " ++ stmt ++ " falls within writable memory.")
-                  where stmt = show (Store (id) pdestRel pvalRel :: Stmt Int () () ())
+                  where stmt = show (Store (id) pdestRel pvalRel :: IdStmt)
 
 validateWrites ranges (Compound id stmts) = mapM_ (validateWrites ranges) stmts
 
 validateWrites _ _ = return ()
 
--- The range that spans all memory.
+-- The range that spans all memory. -1 when taken as an unsigned quantity is the largest
+-- possible bit-vector because all its bits are set.
 
 allMemory :: [CsMode] -> [(Expr, Expr)]
 
 allMemory modes = [(BvExpr (toBv 0 archBitSize), BvExpr (toBv (-1) archBitSize))]
-              where archBitSize = get_arch_bit_size modes
+              where archBitSize = getArchBitSize modes
 
 -- Convert absolute statements to id statements
 
