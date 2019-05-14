@@ -18,9 +18,9 @@ getCsX86arch inst =
     Just (X86 csx86) -> Just csx86
     _ -> Nothing
 
-x86operands :: CsInsn -> [CsX86Op]
+x86Operands :: CsInsn -> [CsX86Op]
 
-x86operands inst =
+x86Operands inst =
   let arch2 = getCsX86arch (Capstone.detail inst)
       ops = maybe [] operands arch2
   in ops
@@ -88,7 +88,7 @@ storeStmt modes operand storeWhat =
 zfSem :: Expr -> CsX86Op -> IdStmt
 
 zfSem parent dst =
-  let bvSize = (fromIntegral $ size dst) * 8 in
+  let bvSize = (fromIntegral $ size dst) * byteSizeBit in
     SetReg undefined (fromX86Flag X86FlagZf) (IteExpr
       (EqualExpr (ExtractExpr 0 bvSize parent) (BvExpr (toBv 0 bvSize)))
       (BvExpr (toBv 1 1))
@@ -99,7 +99,7 @@ zfSem parent dst =
 ofAddSem :: Expr -> CsX86Op -> Expr -> Expr -> IdStmt
 
 ofAddSem parent dst op1ast op2ast =
-  let bvSize = (fromIntegral $ size dst) * 8 in
+  let bvSize = (fromIntegral $ size dst) * byteSizeBit in
     SetReg undefined (fromX86Flag X86FlagOf) (ExtractExpr (bvSize - 1) bvSize
       (BvandExpr
         (BvxorExpr op1ast (BvnotExpr op2ast))
@@ -110,7 +110,7 @@ ofAddSem parent dst op1ast op2ast =
 cfAddSem :: Expr -> CsX86Op -> Expr -> Expr -> IdStmt
 
 cfAddSem parent dst op1ast op2ast =
-  let bvSize = (fromIntegral $ size dst) * 8 in
+  let bvSize = (fromIntegral $ size dst) * byteSizeBit in
     SetReg undefined (fromX86Flag X86FlagCf) (ExtractExpr (bvSize - 1) bvSize
       (BvxorExpr (BvandExpr op1ast op2ast)
         (BvandExpr (BvxorExpr
@@ -123,7 +123,7 @@ cfAddSem parent dst op1ast op2ast =
 afSem :: Expr -> CsX86Op -> Expr -> Expr -> IdStmt
 
 afSem parent dst op1ast op2ast =
-  let bvSize = (fromIntegral $ size dst) * 8 in
+  let bvSize = (fromIntegral $ size dst) * byteSizeBit in
     SetReg undefined (fromX86Flag X86FlagAf) (IteExpr
       (EqualExpr
         (BvExpr (toBv 0x10 bvSize))
@@ -156,7 +156,7 @@ pfSem parent dst =
 sfSem :: Expr -> CsX86Op -> IdStmt
 
 sfSem parent dst =
-  let bvSize = (fromIntegral $ size dst) * 8 in
+  let bvSize = (fromIntegral $ size dst) * byteSizeBit in
     SetReg undefined (fromX86Flag X86FlagSf) (ExtractExpr (bvSize - 1) bvSize parent)
 
 -- Make operation to set the carry flag to the value that it would have after an sub operation
@@ -164,7 +164,7 @@ sfSem parent dst =
 cfSubSem :: Expr -> CsX86Op -> Expr -> Expr -> IdStmt
 
 cfSubSem parent dst op1ast op2ast =
-  let bvSize = (fromIntegral $ size dst) * 8 in
+  let bvSize = (fromIntegral $ size dst) * byteSizeBit in
     SetReg undefined (fromX86Flag X86FlagCf) (ExtractExpr (bvSize - 1) bvSize
       (BvxorExpr
         (BvxorExpr op1ast (BvxorExpr op2ast (ExtractExpr 0 bvSize parent)))
@@ -177,7 +177,7 @@ cfSubSem parent dst op1ast op2ast =
 ofSubSem :: Expr -> CsX86Op -> Expr -> Expr -> IdStmt
 
 ofSubSem parent dst op1ast op2ast =
-  let bvSize = (fromIntegral $ size dst) * 8 in
+  let bvSize = (fromIntegral $ size dst) * byteSizeBit in
     SetReg undefined (fromX86Flag X86FlagOf) (ExtractExpr (bvSize - 1) bvSize
       (BvandExpr
         (BvxorExpr op1ast op2ast)
@@ -202,7 +202,7 @@ liftX86 :: [CsMode] -> CsInsn -> IdStmt
 -- ADD instruction
 
 liftX86 modes inst | getInsnId inst == X86InsAdd =
-  let (dst : src : _ ) = x86operands inst
+  let (dst : src : _ ) = x86Operands inst
       dstAst = getOperandAst modes dst
       srcAst = getOperandAst modes src
       addNode = (BvaddExpr dstAst srcAst)
@@ -219,7 +219,7 @@ liftX86 modes inst | getInsnId inst == X86InsAdd =
 -- INC instruction
 
 liftX86 modes inst | getInsnId inst == X86InsInc =
-  let (dst : _ ) = x86operands inst
+  let (dst : _ ) = x86Operands inst
       dstAst = getOperandAst modes dst
       srcAst = BvExpr (toBv 1 (fromIntegral (size dst * byteSizeBit)))
       addNode = (BvaddExpr dstAst srcAst)
@@ -235,7 +235,7 @@ liftX86 modes inst | getInsnId inst == X86InsInc =
 -- SUB instruction
 
 liftX86 modes inst | getInsnId inst == X86InsSub =
-  let (dst : src : _ ) = x86operands inst
+  let (dst : src : _ ) = x86Operands inst
       dstAst = getOperandAst modes dst
       srcAst = getOperandAst modes src
       subNode = (BvsubExpr dstAst srcAst)
@@ -252,7 +252,7 @@ liftX86 modes inst | getInsnId inst == X86InsSub =
 -- CMP instruction
 
 liftX86 modes inst | getInsnId inst == X86InsCmp =
-  let (dst : src : _ ) = x86operands inst
+  let (dst : src : _ ) = x86Operands inst
       dstAst = getOperandAst modes dst
       srcAst = SxExpr (fromIntegral (size dst) * byteSizeBit) (getOperandAst modes src)
       cmpNode = BvsubExpr dstAst srcAst
@@ -268,7 +268,7 @@ liftX86 modes inst | getInsnId inst == X86InsCmp =
 -- XOR instruction
 
 liftX86 modes inst | getInsnId inst == X86InsXor =
-  let (dstOp : srcOp : _ ) = x86operands inst
+  let (dstOp : srcOp : _ ) = x86Operands inst
       dstAst = getOperandAst modes dstOp
       srcAst = getOperandAst modes srcOp
       xorNode = (BvxorExpr dstAst srcAst)
@@ -285,7 +285,7 @@ liftX86 modes inst | getInsnId inst == X86InsXor =
 -- AND instruction
 
 liftX86 modes inst | getInsnId inst == X86InsAnd =
-  let (dstOp : srcOp : _ ) = x86operands inst
+  let (dstOp : srcOp : _ ) = x86Operands inst
       dstAst = getOperandAst modes dstOp
       srcAst = getOperandAst modes srcOp
       andNode = (BvandExpr dstAst srcAst)
@@ -302,7 +302,7 @@ liftX86 modes inst | getInsnId inst == X86InsAnd =
 -- TEST instruction
 
 liftX86 modes inst | getInsnId inst == X86InsTest =
-  let (dstOp : srcOp : _ ) = x86operands inst
+  let (dstOp : srcOp : _ ) = x86Operands inst
       dstAst = getOperandAst modes dstOp
       srcAst = getOperandAst modes srcOp
       testNode = (BvandExpr dstAst srcAst)
@@ -318,7 +318,7 @@ liftX86 modes inst | getInsnId inst == X86InsTest =
 -- OR instruction
 
 liftX86 modes inst | getInsnId inst == X86InsOr =
-  let (dstOp : srcOp : _ ) = x86operands inst
+  let (dstOp : srcOp : _ ) = x86Operands inst
       dstAst = getOperandAst modes dstOp
       srcAst = getOperandAst modes srcOp
       andNode = (BvorExpr dstAst srcAst)
@@ -335,7 +335,7 @@ liftX86 modes inst | getInsnId inst == X86InsOr =
 -- PUSH instruction
 
 liftX86 modes inst | getInsnId inst == X86InsPush =
-  let (src : _) = x86operands inst
+  let (src : _) = x86Operands inst
       sp = getStackReg modes
       archByteSize = getArchByteSize modes
       -- If it's an immediate source, the memory access is always based on the arch size
@@ -350,7 +350,7 @@ liftX86 modes inst | getInsnId inst == X86InsPush =
 -- POP instruction
 
 liftX86 modes inst | getInsnId inst == X86InsPop =
-  let (dst : _) = x86operands inst
+  let (dst : _) = x86Operands inst
       sp = getStackReg modes
       archBitSize = getArchBitSize modes
       opSize = fromIntegral $ size dst
@@ -375,7 +375,7 @@ liftX86 modes inst | getInsnId inst == X86InsPop =
 -- MOV instruction
 
 liftX86 modes inst | getInsnId inst == X86InsMov =
-  let (dstOp : srcOp : _ ) = x86operands inst
+  let (dstOp : srcOp : _ ) = x86Operands inst
       dstAst = getOperandAst modes dstOp
       srcAst = getOperandAst modes srcOp
       dstSizeBit = (fromIntegral $ size dstOp) * byteSizeBit
@@ -407,7 +407,7 @@ liftX86 modes inst | getInsnId inst == X86InsMov =
 -- MOVZX instruction
 
 liftX86 modes inst | getInsnId inst == X86InsMovzx =
-  let (dstOp : srcOp : _ ) = x86operands inst
+  let (dstOp : srcOp : _ ) = x86Operands inst
       dstAst = getOperandAst modes dstOp
       srcAst = getOperandAst modes srcOp
       dstSizeBit = (fromIntegral $ size dstOp) * byteSizeBit
@@ -419,14 +419,14 @@ liftX86 modes inst | getInsnId inst == X86InsMovzx =
 -- JMP instruction
 
 liftX86 modes inst | getInsnId inst == X86InsJmp =
-  let (srcOp : _ ) = x86operands inst
+  let (srcOp : _ ) = x86Operands inst
       srcAst = getOperandAst modes srcOp
   in Compound (fromIntegral (address inst)) [SetReg undefined (getInsnPtr modes) srcAst]
 
 -- JE instruction
 
 liftX86 modes inst | getInsnId inst == X86InsJe =
-  let (srcOp : _ ) = x86operands inst
+  let (srcOp : _ ) = x86Operands inst
       srcAst = getOperandAst modes srcOp
       insnPtr = getInsnPtr modes
   in Compound (fromIntegral (address inst))
@@ -438,7 +438,7 @@ liftX86 modes inst | getInsnId inst == X86InsJe =
 -- JNE instruction
 
 liftX86 modes inst | getInsnId inst == X86InsJne =
-  let (srcOp : _ ) = x86operands inst
+  let (srcOp : _ ) = x86Operands inst
       srcAst = getOperandAst modes srcOp
       insnPtr = getInsnPtr modes
   in Compound (fromIntegral (address inst))
@@ -450,7 +450,7 @@ liftX86 modes inst | getInsnId inst == X86InsJne =
 -- CALL instruction
 
 liftX86 modes inst | getInsnId inst == X86InsCall =
-  let (srcOp : _ ) = x86operands inst
+  let (srcOp : _ ) = x86Operands inst
       srcAst = getOperandAst modes srcOp
       sp = getStackReg modes
       archByteSize = getArchByteSize modes
@@ -463,7 +463,7 @@ liftX86 modes inst | getInsnId inst == X86InsCall =
 -- RET instruction
 
 liftX86 modes inst | getInsnId inst == X86InsRet =
-  let operands = x86operands inst
+  let operands = x86Operands inst
       sp = getStackReg modes
       insnPtr = getInsnPtr modes
       archByteSize = getArchByteSize modes
@@ -477,7 +477,7 @@ liftX86 modes inst | getInsnId inst == X86InsRet =
 -- LEA instruction
 
 liftX86 modes inst | getInsnId inst == X86InsLea =
-  let (dstOp : srcOp : _ ) = x86operands inst
+  let (dstOp : srcOp : _ ) = x86Operands inst
       dstAst = getOperandAst modes dstOp
       dstSize = fromIntegral (size dstOp * byteSizeBit)
       srcEaSize = getArchBitSize modes
